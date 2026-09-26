@@ -6,9 +6,8 @@
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 
-/* A datagram from a real Switch session and the plaintext an independent implementation
-   produced for it. Covers key derivation, nonce construction, tag placement and the zstd
-   body, where a silent mistake would otherwise surface only as a desync on hardware. */
+/* Datagram captured from a real Switch session, with the plaintext from an independent
+   implementation. Checks key derivation, nonce, tag placement and zstd body. */
 static const uint8_t kSsid[16] = {
     0x4f, 0x3b, 0x51, 0x39, 0x85, 0xd8, 0x3e, 0xda, 0x42, 0x14, 0xc2, 0xa1,
     0xe6, 0xd4, 0xea, 0x54,
@@ -36,8 +35,8 @@ static const uint8_t kPlain[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 };
 
-/* From the same session: the largest datagram the Switch sent, a re-send of 74 reliable
-   frames its partner had not acknowledged. 381 bytes on the wire, 7182 decompressed. */
+/* Same session: largest datagram seen, a resend of 74 unacked reliable frames.
+   381 bytes on the wire, 7182 decompressed. */
 static const uint8_t kBatch[] = {
     0x32, 0xab, 0x98, 0x64, 0x90, 0x91, 0xc4, 0x93, 0x59, 0x6e, 0xd7, 0xcd,
     0x02, 0xea, 0x57, 0xd4, 0x38, 0x70, 0xea, 0xd9, 0xb9, 0x4e, 0x01, 0xbc,
@@ -75,15 +74,14 @@ static const uint8_t kBatch[] = {
 #define BATCH_BODY 7182
 #define BATCH_MESSAGES 74
 
-/* Decrypts and decompresses kBatch and counts its messages; returns the message count,
-   or a negative stage number. */
+/* Decrypt and decompress kBatch. Returns its message count, or a negative stage number. */
 static int selftest_batch(const pia_crypto_t *c, uint8_t *plain, int *body_size)
 {
     int n = pia_decrypt(c, kBatch, sizeof(kBatch), kSourceIp, plain, PIA_MAX_BODY);
     if (n < 0) return -1;
     int trimmed = n - (kBatch[5] >> 4) - kBatch[12];
     if (trimmed < 0) return -2;
-    /* The Switch's frames do not declare their content size. */
+    /* Switch frames carry no content size. */
     uint8_t *body = malloc(8192);
     if (!body) return -4;
     *body_size = pia_decompress(plain, (size_t)trimmed, body, 8192);
@@ -104,7 +102,7 @@ int pia_selftest(char *out, size_t cap)
     pia_crypto_t c;
     pia_crypto_init(&c, kSsid);
 
-    /* Heap, not static: this runs only on request, and the bridge needs the RAM. */
+    /* Heap, not static: runs only on request; the bridge needs the RAM. */
     uint8_t *plain = malloc(PIA_MAX_BODY), *body = malloc(PIA_MAX_BODY);
     if (!plain || !body) { free(plain); free(body); return snprintf(out, cap, "nomem"); }
     int written = 0;
@@ -119,7 +117,7 @@ int pia_selftest(char *out, size_t cap)
         goto done;
     }
 
-    /* The header's low bit marks a compressed body. */
+    /* Header byte 5 bit 0: compressed body. */
     int padding = kDatagram[5] >> 4, footer = kDatagram[12];
     int trimmed = n - padding - footer;
     if (trimmed < 0) { written = snprintf(out, cap, "decrypt=OK footer=BAD"); goto done; }
@@ -135,7 +133,7 @@ int pia_selftest(char *out, size_t cap)
     pia_message_t messages[PIA_MAX_MESSAGES];
     int count = pia_messages_decode(body, (size_t)m, messages, PIA_MAX_MESSAGES);
 
-    /* A raw-block frame must survive pia_decompress. */
+    /* Raw-block frame round trip through pia_decompress. */
     uint8_t round[64], back[64];
     int r = pia_compress_raw(kPlain, 32, round, sizeof(round));
     int rb = r > 0 ? pia_decompress(round, (size_t)r, back, sizeof(back)) : -1;

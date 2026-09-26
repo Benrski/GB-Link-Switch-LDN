@@ -7,8 +7,7 @@
 #include "esp_err.h"
 #include "esp_wifi.h"
 
-/* ABI copy of the private ESP-IDF v6.1 declarations used by the probe.
-   Source of truth:
+/* ABI copy of private ESP-IDF v6.1 declarations used by the probe. Source:
    components/wpa_supplicant/esp_supplicant/src/esp_wifi_driver.h */
 
 enum ldn_wifi_appie {
@@ -105,6 +104,24 @@ int esp_wifi_set_sta_key_internal(int alg, uint8_t *addr, int key_idx,
                                   int set_tx, uint8_t *seq, size_t seq_len,
                                   uint8_t *key, size_t key_len,
                                   enum ldn_key_flag key_flag);
+/* AP-side key install (host mode). wpa_auth.c passes the station MAC for the pairwise
+   key (index 0) and the broadcast address for the group key (index GN = 1). */
+int esp_wifi_set_ap_key_internal(int alg, const uint8_t *addr, int idx,
+                                 uint8_t *key, size_t key_len);
+/* Deauthenticate an associated station. */
+int esp_wifi_ap_deauth_internal(uint8_t *mac, uint32_t reason);
+/* Called by wpa_auth.c at the end of PTKINITDONE. Opens the station's port and posts
+   WIFI_EVENT_AP_STACONNECTED. */
+bool esp_wifi_wpa_ptk_init_done_internal(uint8_t *mac);
+
+/* hostapd station table and association response, as used by the stock join. */
+struct hostapd_data;
+struct sta_info;
+struct hostapd_data *hostapd_get_hapd_data(void);
+struct sta_info *ap_get_sta(struct hostapd_data *hapd, const uint8_t *sta);
+struct sta_info *ap_sta_add(struct hostapd_data *hapd, const uint8_t *addr);
+uint16_t esp_send_assoc_resp(struct hostapd_data *hapd, const uint8_t *addr, uint16_t status_code,
+                             bool omit_rsnxe, int subtype);
 int esp_wifi_get_sta_key_internal(uint8_t *ifx, int *alg, uint8_t *addr,
                                   int *key_idx, uint8_t *key, size_t key_len,
                                   enum ldn_key_flag key_flag);

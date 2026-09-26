@@ -51,7 +51,7 @@ public sealed class KeyFile
 
     public static readonly string[] Used = ["aes_kek_generation_source", "aes_key_generation_source", "master_key_00", "master_key_12"];
 
-    // Copies only the entries in Used: the rest of a prod.keys unlocks far more than this program needs.
+    // Copies only the entries in Used; a full prod.keys holds far more than needed.
     public static KeyFile Import(string source, string programDirectory)
     {
         var keys = new KeyFile(source);

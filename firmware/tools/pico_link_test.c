@@ -1,23 +1,22 @@
-/* Host-side run of the GB-Link link task against a scripted adapter: when the wireless
-   mode is asked for, and that a working link is never asked again. Build and run from
-   the firmware directory:
+/* Host test of the GB-Link link task against a scripted adapter. Checks when SetMode
+   (wireless mode) is sent, and that a working link is never re-requested. Build and run
+   from the firmware directory:
 
        cc -std=c11 -Wall -Wextra -I tools/host_stubs -I common tools/pico_link_test.c -o /tmp/pico_link_test && /tmp/pico_link_test
 
-   The adapter model follows the GB-Link firmware: silent until a mode is requested;
-   status and data go to whichever side spoke last; entering the mode answers
-   DeviceReady and AwaitMode; in the mode it reports every 500 ms (tag 0x0E, whose second
-   byte says whether a GBA is clocking it). The timeline powers the adapter after the
-   board, restarts it, lets a USB host take its attention, and restarts it again with a
-   GBA attached. Entering the mode resets the adapter, so a request that reaches an
-   adapter which is in the mode and reporting to this board counts as a failure. */
+   Adapter model, per the GB-Link firmware: silent until a mode is requested. Status and
+   data go to the side that spoke last. Entering the mode answers DeviceReady and
+   AwaitMode. In the mode it reports every 500 ms (tag 0x0E, byte 1 = GBA clocking it).
+   Timeline: adapter powers after the board, restarts, a USB host takes it over, then it
+   restarts with a GBA attached. Entering the mode resets the adapter, so a SetMode that
+   reaches an adapter already in the mode and reporting to this board is a failure. */
 
 #include "../common/pico_link.c"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-/* ---- the adapter */
+/* ---- adapter model */
 
 static struct
 {
@@ -77,7 +76,7 @@ static void adapter_power(bool on)
     g_adapter.to_uart = false;
 }
 
-/* ---- the timeline */
+/* ---- timeline */
 
 typedef enum { POWER_ON, POWER_OFF, USB_HOST_SPEAKS, GBA_ON, CHECK_LINKED, CHECK_QUIET_SINCE } action_t;
 typedef struct { TickType_t at; action_t action; TickType_t since; const char *what; } event_t;
@@ -101,14 +100,14 @@ static unsigned requests_since(TickType_t since)
 }
 
 static const event_t g_events[] = {
-    {5000, POWER_ON, 0, NULL},                       /* the board was powered first */
+    {5000, POWER_ON, 0, NULL},                       /* board powered first */
     {6000, CHECK_LINKED, 0, "an adapter powered after the board is put in the mode"},
     {30000, CHECK_QUIET_SINCE, 6000, "a working link is left alone"},
-    {30000, POWER_OFF, 0, NULL},                     /* the adapter restarts */
+    {30000, POWER_OFF, 0, NULL},                     /* adapter restarts */
     {30800, POWER_ON, 0, NULL},
     {37000, CHECK_LINKED, 0, "an adapter that restarted is put back in the mode"},
     {50000, CHECK_QUIET_SINCE, 37000, "and then left alone again"},
-    {50000, USB_HOST_SPEAKS, 0, NULL},               /* still in the mode, now reporting to USB */
+    {50000, USB_HOST_SPEAKS, 0, NULL},               /* still in the mode, reporting to USB */
     {56000, CHECK_LINKED, 0, "an adapter that a USB host spoke to is taken back"},
     {60000, GBA_ON, 0, NULL},
     {70000, CHECK_QUIET_SINCE, 56000, "a link with a GBA on it is left alone"},
@@ -148,7 +147,7 @@ static void time_passes(TickType_t ticks)
     if ((int32_t)(g_now - g_until) >= 0) s_running = false;
 }
 
-/* ---- what pico_link.c runs on */
+/* ---- FreeRTOS / ESP-IDF stubs */
 
 struct host_queue { uint32_t length, item_size, count, head; uint8_t *items; };
 
@@ -193,6 +192,8 @@ BaseType_t xTaskCreate(void (*task)(void *), const char *name, uint32_t stack, v
     return pdTRUE;
 }
 
+int uart_intr_config(int uart, const uart_intr_config_t *config) { (void)uart; (void)config; return ESP_OK; }
+
 int uart_driver_install(int uart, int rx, int tx, int size, void *queue, int flags)
 {
     (void)uart; (void)rx; (void)tx; (void)size; (void)queue; (void)flags;
@@ -227,7 +228,7 @@ int uart_write_bytes(int uart, const void *bytes, size_t length)
 
 int main(void)
 {
-    /* On the wires: one uptime of the board, 80 seconds of it. */
+    /* UART port: 80 s of board uptime. */
     g_until = 80000;
     pico_link_start();
     g_task(NULL);
@@ -235,8 +236,8 @@ int main(void)
     check(g_adapter.disrupted == 0, "no request ever reached an adapter that was in the mode and reporting here");
     printf("on the wires: %u requests, %u mode entries, %u disruptive\n", g_requests, g_adapter.entries, g_adapter.disrupted);
 
-    /* Through the host, the host looks after the adapter: silence there is the host's
-       business, and the board does not start asking again. */
+    /* Host port: the host manages the adapter. The board does not re-request the mode
+       when the host side is quiet. */
     check(pico_link_set_port(PICO_PORT_HOST), "the host port opens");
     const uint8_t await_mode[] = {SYNC0, SYNC1, PICO_LINK_CHANNEL_STATUS, 2, 0, 0x02, 0xFF};
     pico_link_feed_host(await_mode, sizeof(await_mode));

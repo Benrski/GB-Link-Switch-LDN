@@ -9,5 +9,7 @@ CONFIG_PICO_LINK_TX_GPIO=2
 CONFIG_PICO_LINK_RX_GPIO=1
 CONFIG_LWIP_DHCPS_STATIC_ENTRIES=y
 CONFIG_FREERTOS_HZ=1000
-# 1.5 MB for the app; the NVS partition that holds the keys stays where the default table puts it.
+# 1.5 MB app partition; the key NVS partition stays at its default location.
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Bridge runs on the main task; hosting a room adds Wi-Fi AP start-up to its stack.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144

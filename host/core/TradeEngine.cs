@@ -55,9 +55,8 @@ public sealed class TradeEngine
     }
     public void Sit() { if (seated) return; seated = true; postSeat = 20; }
 
-    // The game leaves the trade menu only when both sides send Cancel, and the leader transmits its Cancel
-    // but never its Ready. So this side sends Ready unprompted, switches to Cancel once the leader has sent
-    // one, and back to Ready on PartnerCancel (the leader chose a Pokémon against this side's Cancel).
+    // The menu closes only when both sides send Cancel. The leader transmits Cancel but never Ready.
+    // PartnerCancel: the leader chose a Pokémon while this side was cancelling.
     public bool Declining => declining;
     public int Offered => offered;
     private bool Occupied(int slot) => party[slot].Any(b => b != 0);
@@ -69,8 +68,8 @@ public sealed class TradeEngine
         if (notice != null) Notice?.Invoke(notice);
         DecliningChanged?.Invoke(value);
     }
-    // The leader keeps only the follower's latest Ready or Cancel until its own player has answered, so a
-    // later block replaces an earlier one.
+    // The leader keeps only the follower's latest Ready/Cancel until its player answers, so a later block
+    // replaces an earlier one.
     public void Decline()
     {
         if (declining || Done || State == 4) return;
@@ -155,7 +154,7 @@ public sealed class TradeEngine
             case SetMons:
                 if (cursor is < 0 or > 5) throw new InvalidDataException("Invalid opponent cursor");
                 hostCursor = cursor;
-                // A Decline that raced the leader's SetMons answers the confirmation with ReadyCancel.
+                // Decline raced SetMons: answer the confirmation with ReadyCancel.
                 if (State is 1 or 2) { State = 3; if (!confirmed) { confirmed = true; pending = LinkCommand(declining ? ReadyCancel : InitBlock); } }
                 break;
             case Cancel:
@@ -183,7 +182,7 @@ public sealed class TradeEngine
     {
         if (hostCursor < 0 || hostBlocks != 3) throw new InvalidDataException("Trade confirmed without a complete opponent selection");
         var received = hostParty[(hostCursor * 100)..((hostCursor + 1) * 100)];
-        // The traded slot is the cursor of the last Ready sent, which can differ from offered.
+        // Traded slot = cursor of the last Ready sent; may differ from offered.
         int slot = sentCursor;
         Received = Parse(received).Data.ToArray(); party[slot] = received; Commits++; trading = false;
         Committed?.Invoke(Received, slot);
@@ -226,9 +225,8 @@ public sealed class TradeEngine
             returnBarrier = false; Done = postCancel = true;
         }
         if (postCancel && Barrier.Active) return Barrier.Emit() ?? Rfu.Words(0);
-        // The Switch answers the rounds around its save once its game gets there, and a Pokémon that evolves on
-        // arrival comes first, with a move to replace taking as long as its player likes. The leader never
-        // starts a round, so this side keeps asking, as a game does, until the Switch's party request ends them.
+        // Save rounds after a trade. The leader never starts one, and an evolution (with move learning) can
+        // delay its answer indefinitely, so keep initiating until the Switch requests the party.
         if (saveBarriers)
         {
             if (!Barrier.Active) Barrier.Initiate();

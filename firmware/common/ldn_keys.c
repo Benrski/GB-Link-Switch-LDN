@@ -11,7 +11,7 @@
 
 static const char *const kNames[] = {
     "aes_kek_generation_source", "aes_key_generation_source", "master_key_00", "master_key_12"};
-/* NVS keys are capped at 15 characters, so the long names are stored abbreviated. */
+/* NVS key names are limited to 15 characters. */
 static const char *const kSlots[] = {"kek", "gen", "m00", "m12"};
 #define KEY_COUNT (sizeof(kSlots) / sizeof(kSlots[0]))
 
@@ -151,7 +151,7 @@ bool ldn_decode_advertisement(const uint8_t *raw, size_t len, const uint8_t host
         memcpy(nonce, raw + 48, 4);
         size_t body = len - 68;
         if (body > sizeof(data)) return false;
-        /* Ciphertext first, then the 16-byte tag that precedes it on the wire. */
+        /* Wire layout: 16-byte tag at 52, ciphertext at 68. */
         if (!pia_gcm(key, 16, nonce, 12, raw + 12, 40, raw + 68, body, data,
                      (uint8_t *)(raw + 52), 16, false))
             return false;
@@ -180,6 +180,7 @@ bool ldn_decode_advertisement(const uint8_t *raw, size_t len, const uint8_t host
             memcpy(m->name, data + o + 12, 32);
             m->name[32] = 0;
             m->index = (uint8_t)index;
+            m->platform = data[o + 11];
         }
         int app_at = 40 + 48 * count, app_size = bin_b16(data + app_at);
         if (app_size > LDN_MAX_APP_DATA || app_at + 2 + app_size != length) return false;
@@ -280,7 +281,7 @@ bool ldn_auth_begin(ldn_auth_t *a, const ldn_network_t *net)
                           cipher, tag, 16, true);
         memset(key, 0, sizeof(key));
         if (!ok) return false;
-        /* The tag leads the ciphertext on the wire. */
+        /* Tag precedes the ciphertext on the wire. */
         memcpy(a->request + 78, tag, 16);
         memcpy(a->request + 94, cipher, (size_t)payload_len);
     }

@@ -95,8 +95,7 @@ public sealed class SerialDevice : IDisposable
     public void Pump()
     {
         if (!stopping) cancel.ThrowIfCancellationRequested();
-        // A port being torn down or re-enumerated (a board unplugged mid-run) can report a negative
-        // count; treat anything non-positive as "nothing to read" rather than sizing a buffer with it.
+        // A port being closed or re-enumerated (board unplugged) can report a negative count.
         int available, count;
         try { available = Math.Min(port.BytesToRead, 65536); } catch (Exception) { return; }
         if (available <= 0) return;
@@ -128,7 +127,7 @@ public sealed class SerialDevice : IDisposable
             }
         }
     }
-    // Set when the GB-Link adapter is wired to this device instead of a port of the PC's own.
+    // Set when the GB-Link adapter is attached to this device instead of the PC.
     public Action<byte[]>? RfuReceived { get; set; }
     public void SendRfu(byte[] bytes) => Write(SerialCodec.Encode(new(7, 0, Session, bytes)));
 
@@ -157,7 +156,7 @@ public sealed class SerialDevice : IDisposable
     private const string InstallAdvice = "Install the current firmware with the web client (web/), then connect again.";
     public void Handshake()
     {
-        // Opening the port can reset the chip through DTR/RTS, and it takes about a second to boot.
+        // Opening the port can reset the chip via DTR/RTS; boot takes about a second.
         List<string>? reply = null;
         var patience = Stopwatch.StartNew();
         while (reply == null && patience.Elapsed.TotalSeconds < 8)
@@ -182,7 +181,7 @@ public sealed class SerialDevice : IDisposable
         if (info.Length < 3 || info[1] != "frlg-ldn-bridge" || !Version.TryParse(info[2], out var version) || version.Major < 2)
             throw new ConnectionException("This board runs firmware from before 2.0. " + InstallAdvice);
         Firmware = info[2];
-        // The firmware's own bridge owns the radio while it runs (LDN_ERROR BRIDGE_OWNS_RADIO).
+        // The firmware bridge owns the radio while running (LDN_ERROR BRIDGE_OWNS_RADIO).
         Command("LDN_BRIDGE_STOP", 5);
         events.Clear(); BadFrames = 0;
     }

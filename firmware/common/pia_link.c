@@ -21,7 +21,7 @@ void pia_link_init(pia_link_t *l, const uint8_t ssid[16], const uint8_t our_mac[
     l->send = send; l->deliver = deliver; l->log = log; l->user = user;
     l->next_deliver = -1;
     l->last_ack = -100;
-    l->timestamp = 0x362e;
+    l->timestamp = 0x362e;   /* base of the frame counter stamped on WT frames */
     l->connect_wanted = true;
     uint8_t seed[8];
     esp_fill_random(seed, sizeof(seed));
@@ -95,14 +95,12 @@ void pia_link_enqueue(pia_link_t *l, const uint8_t *payload, size_t length)
 {
     if (length > PIA_OUT_BYTES) return;
     if (is_idle(payload, length)) { memcpy(l->idle, payload, length); l->idle_len = (uint16_t)length; l->has_idle = true; }
-    /* Collapse only an exact repeat of the frame queued last: an RFU-level retransmit
-       of something the peer has not consumed. Anything that differs, the mod-8
-       sequence tag included, is a distinct frame and must be forwarded. */
+    /* Drop only an exact repeat of the last queued frame (an RFU-level retransmit).
+       Any difference, including the mod-8 sequence tag, is a distinct frame. */
     if (l->last_enqueued_len == length && memcmp(l->last_enqueued, payload, length) == 0) return;
     if (l->out_count >= PIA_OUT_SLOTS)
     {
-        /* Full. An idle frame only repeats the child's empty state, so it is the one
-           to give up: the incoming frame if it is idle, else the newest queued idle one. */
+        /* Full: drop the incoming frame if idle, else the newest queued idle one. */
         if (is_idle(payload, length)) { ++l->idle_evicted; return; }
         int victim = -1;
         for (int i = l->out_count - 1; i >= 0 && victim < 0; --i)
@@ -120,10 +118,9 @@ void pia_link_enqueue(pia_link_t *l, const uint8_t *payload, size_t length)
     memcpy(l->outbound[slot].data, payload, length);
     l->outbound[slot].length = (uint16_t)length;
     ++l->out_count;
-    /* The GBA writes a held-keys report every frame and the Switch takes about one child
-       frame per datagram it sends, fewer when it bundles its own, so reports back up while
-       the player walks. Both games move the GBA's avatar from the parent's echo of them, so
-       a report shed here, before its sequence tag is stamped, is dropped for both alike. */
+    /* The GBA sends a held-keys report every frame; the Switch takes about one child frame
+       per datagram, so reports back up while walking. The avatar moves from the parent's
+       echo, and shedding happens before the sequence stamp, so both sides stay in step. */
     for (int i = 0; l->sheddable && l->out_count > PIA_OUT_SHED_AT && i < l->out_count - 1;)
     {
         const int at = (l->out_head + i) % PIA_OUT_SLOTS;
@@ -161,10 +158,9 @@ static int wrap_ack(uint32_t sequence, uint32_t middle, uint32_t time, uint8_t o
     return 16;
 }
 
-/* The next child frame to send, or the idle frame when nothing new is waiting. A real
-   command is never repeated: the games discard a frame only when every slot's command
-   word is zero, so a command left on repeat keeps the peer's receive queue permanently
-   non-empty and the standby handshake deadlocks. */
+/* Next child frame to send, or the idle frame when the queue is empty. Commands are never
+   repeated: the games discard a frame only when every slot's command word is zero, so a
+   repeated command keeps the peer's receive queue non-empty and deadlocks standby. */
 static int next_outbound(pia_link_t *l, uint8_t *out, size_t cap)
 {
     if (l->out_count > 0)
@@ -173,11 +169,11 @@ static int next_outbound(pia_link_t *l, uint8_t *out, size_t cap)
         l->out_head = (l->out_head + 1) % PIA_OUT_SLOTS;
         --l->out_count;
         if (l->stamp) l->stamp(l->outbound[slot].data, l->outbound[slot].length);
-        return wrap_wt(l->outbound[slot].data, l->outbound[slot].length, l->timestamp++, out, cap);
+        return wrap_wt(l->outbound[slot].data, l->outbound[slot].length, l->timestamp + (uint32_t)l->tick, out, cap);
     }
     if (!l->has_idle) return -1;
     ++l->repeated;
-    return wrap_wt(l->idle, l->idle_len, l->timestamp++, out, cap);
+    return wrap_wt(l->idle, l->idle_len, l->timestamp + (uint32_t)l->tick, out, cap);
 }
 
 /* ---- datagram assembly ----------------------------------------------------- */
@@ -270,8 +266,8 @@ static void feed_gba(pia_link_t *l, const uint8_t *p, size_t len)
     if (l->deliver) l->deliver(p, len, l->user);
 }
 
-/* Pia is selective repeat, so a retransmit arrives late; the games validate a
-   +1-mod-8 sequence, and one reordered pair desyncs them permanently. */
+/* Deliver in order. Pia retransmits arrive late, and the games check a +1 mod-8
+   sequence; one reordered pair desyncs them permanently. */
 static void resequence(pia_link_t *l, uint16_t seq, const uint8_t *inner, size_t len)
 {
     if (l->next_deliver < 0) l->next_deliver = seq;
@@ -291,7 +287,7 @@ static void resequence(pia_link_t *l, uint16_t seq, const uint8_t *inner, size_t
                     ++l->reordered;
                     held = true;
                 }
-            if (!held) ++l->hold_dropped;   /* a frame the GBA will never see */
+            if (!held) ++l->hold_dropped;   /* lost to the GBA */
         }
         return;
     }
@@ -333,7 +329,7 @@ void pia_link_receive(pia_link_t *l, const uint8_t *data, size_t length, const c
         size = pia_decompress(plain, (size_t)n, app, sizeof(app));
         if (size < 0)
         {
-            /* The whole datagram is lost; the Switch re-sends it in a larger batch. */
+            /* Datagram lost; the Switch resends it in a larger batch. */
             ++l->rx_unzip_fail;
             l->rx_unzip_last_error = -size;
             l->rx_unzip_last_len = (int)length;
@@ -351,8 +347,8 @@ void pia_link_receive(pia_link_t *l, const uint8_t *data, size_t length, const c
         l->rx_first_footer = footer;
     }
 
-    /* Every message, however many: a frame skipped here is never acknowledged, so the
-       Switch keeps re-sending it inside ever larger batches. */
+    /* Process every message. A skipped frame is never acked and the Switch keeps
+       resending it in ever larger batches. */
     pia_message_iter_t it;
     pia_message_iter_init(&it, body, (size_t)size);
     pia_message_t message;
@@ -430,7 +426,7 @@ void pia_link_tick(pia_link_t *l)
             }
             return;
         }
-        /* Before WC the host still expects its stream acknowledged. */
+        /* Before WC the host still expects its stream acked. */
         count = pia_reliable_retransmit(&l->reliable, now, 2, frames, 16);
         uint8_t ack[20];
         if (l->tick - l->last_ack >= 2 && (l->ack_owed || pia_reliable_has_gap(&l->reliable)))

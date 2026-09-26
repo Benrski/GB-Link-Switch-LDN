@@ -1,9 +1,9 @@
 #pragma once
 #include "pia_bin.h"
 
-/* Switch key material and the LDN advertisement/authentication crypto. Keys live in
-   NVS, are written once over the control link, and are never read back, logged or
-   compiled into the firmware image. */
+/* Switch key material and LDN advertisement/authentication crypto. Keys are stored in
+   NVS, written once over the control link, and never read back, logged or compiled
+   into the firmware image. */
 
 #define LDN_MAX_MEMBERS 8
 #define LDN_MAX_APP_DATA 384
@@ -14,6 +14,7 @@ typedef struct
     char ip[16];
     char name[33];
     uint8_t index;
+    uint8_t platform;   /* 0 a Switch, 1 a Switch 2 */
 } ldn_member_t;
 
 typedef struct
@@ -27,25 +28,25 @@ typedef struct
     int member_count;
 } ldn_network_t;
 
-/* Provisioning: store one named 16-byte key. Returns false if the name is unknown. */
+/* Store one named 16-byte key. False if the name is unknown. */
 bool ldn_keys_store(const char *name, const uint8_t value[16]);
-/* Which key names are present, without revealing any value. */
+/* Key presence only. Values are never returned. */
 void ldn_keys_status(bool *kek, bool *gen, bool *master00, bool *master12);
 bool ldn_keys_supports(int protocol);
 void ldn_keys_erase(void);
 
-/* master -> kek -> generation -> SHA256(data): the Switch's LDN key ladder. */
+/* LDN key ladder: master -> kek -> generation -> SHA256(data). */
 bool ldn_keys_derive(int protocol, const uint8_t *data, size_t len, bool advertise, uint8_t out[16]);
-/* The CCMP key the radio needs for the room. */
+/* CCMP key for the room's Wi-Fi network. */
 bool ldn_keys_network(const ldn_network_t *net, uint8_t out[16]);
 
-/* Parse and authenticate a raw LDN advertisement. Returns false unless it is a
-   valid, production-security room that the stored keys can join. */
+/* Parse and authenticate a raw LDN advertisement. False unless it is a valid
+   production-security room the stored keys can join. */
 bool ldn_decode_advertisement(const uint8_t *raw, size_t len, const uint8_t host[6], int channel,
                               ldn_network_t *out);
 
-/* Room authentication: build the join request, then verify the host's response and
-   its challenge. One instance per join attempt. */
+/* Room authentication. ldn_auth_begin builds the join request, ldn_auth_accept checks
+   the host's response and challenge. One instance per join attempt. */
 
 #define LDN_AUTH_MAX_REQUEST 1024
 

@@ -1,7 +1,6 @@
-// The GB-Link adapter, over WebUSB or WebSerial. Either way it looks like a stream of
-// GB-Link frames in both directions, which is what the bridge firmware speaks on its
-// UART: over serial the adapter frames its traffic that way itself, and over WebUSB the
-// channels are separate endpoints that are framed and unframed here.
+// GB-Link adapter over WebUSB or WebSerial, exposed as a GB-Link frame stream both ways (the
+// bridge firmware's UART format). Serial traffic is already framed by the adapter. WebUSB
+// channels are separate endpoints, framed and unframed here.
 
 import { GB_CHANNEL, GbFrameParser, buildGbFrame } from './wire.js';
 
@@ -23,16 +22,16 @@ const ENDPOINT_SIZE = 64;
 class GbLinkBase extends EventTarget {
     constructor() {
         super();
-        this.onBytes = null;       // (Uint8Array) => void: GB-Link frames from the adapter
-        this.waiters = [];         // requests waiting for a data-channel reply
-        this.resets = [];          // { at, count } over the last few seconds
+        this.onBytes = null;       // (Uint8Array) => void, GB-Link frames from the adapter
+        this.waiters = [];         // requests awaiting a data-channel reply
+        this.resets = [];          // { at, count } samples, last 10 s
         this.resetLoop = false;
+        this.quietUntil = 0;       // resets ignored until then (the room is closing)
         this.startedUp = false;    // past the ID handshake, into commands
     }
 
-    // Sends a command and resolves with its reply, or null. Replies arrive on the data
-    // channel and start with the command byte; an adapter in a mode also streams its
-    // own traffic there, so anything else is passed over.
+    // Sends a command; resolves with the reply, or null on timeout. Replies arrive on the data
+    // channel prefixed by the command byte. Other data-channel traffic is ignored.
     request(payload, timeoutMs = 600) {
         return new Promise((resolve) => {
             const waiter = { command: payload[0], resolve, timer: null };
@@ -46,15 +45,21 @@ class GbLinkBase extends EventTarget {
         });
     }
 
-    // A game that cannot get a command through to the adapter resets it and tries again
-    // about four times a second, and blocks while it does: on the GBA that is a freeze.
-    // Ordinary play resets the adapter a handful of times in all.
+    // Ignore resets for a while: the game re-detects the adapter after a room closes, and
+    // longer while the board restarts.
+    quiet(ms) {
+        this.quietUntil = Date.now() + ms;
+    }
+
+    // A game that cannot reach the adapter resets it ~4x/s until it gets through (the GBA
+    // freezes).
     noteResets(count) {
         const now = Date.now();
+        if (now < this.quietUntil) this.resets = [];
         this.resets.push({ at: now, count });
-        while (this.resets.length > 1 && now - this.resets[0].at > 5000) this.resets.shift();
+        while (this.resets.length > 1 && now - this.resets[0].at > 10000) this.resets.shift();
         const risen = (count - this.resets[0].count) & 0xff;
-        const looping = risen >= 10;
+        const looping = risen >= 30;
         if (looping === this.resetLoop) return;
         this.resetLoop = looping;
         this.dispatchEvent(new CustomEvent('resetloop', { detail: { looping, startedUp: this.startedUp } }));
@@ -62,8 +67,8 @@ class GbLinkBase extends EventTarget {
 
     deliver(channel, payload) {
         if (channel !== GB_CHANNEL.DATA || payload.length === 0) return;
-        // Twice a second while the wireless adapter mode runs: how often the game has reset
-        // the adapter (8 bits, wrapping), and how far the adapter's side of the start-up is.
+        // Wireless-mode status, 2x/s: 0x1d carries the game's adapter-reset count (8-bit,
+        // wrapping), 0x0e the adapter's start-up stage.
         if (payload[0] === 0x1d && payload.length === 25) { this.noteResets(payload[14]); return; }
         if (payload[0] === 0x0e && payload.length === 16) { this.startedUp = payload[3] >= 2; return; }
         const at = this.waiters.findIndex((waiter) => waiter.command === payload[0]);
@@ -73,8 +78,7 @@ class GbLinkBase extends EventTarget {
         waiter.resolve(payload);
     }
 
-    // Version, and whether this build has the wireless adapter mode: only that firmware
-    // answers the statistics command.
+    // Firmware version and wireless-mode support (only that firmware answers WIRELESS_STATS).
     async identify() {
         const info = await this.request([COMMAND.FIRMWARE_INFO]);
         const stats = await this.request([COMMAND.WIRELESS_STATS], 400);
@@ -119,7 +123,7 @@ export class GbLinkSerial extends GbLinkBase {
         this.reader = port.readable.getReader();
         this.readEnded = false;
         this.readLoop();
-        // See PORT_LOST_ADVICE in esp.js: the same thing happens to this port.
+        // Same Linux VMIN=0 issue as PORT_LOST_ADVICE in esp.js.
         await new Promise((resolve) => setTimeout(resolve, 150));
         if (this.readEnded) {
             throw Object.assign(new Error('The browser lost the port the moment it opened it. On Linux this happens after another serial program has used the port: unplug the adapter and plug it back in, then connect again.'), { code: 'port-lost' });
@@ -143,7 +147,7 @@ export class GbLinkSerial extends GbLinkBase {
         if (reader === this.reader) this.dispatchEvent(new Event('disconnected'));
     }
 
-    // A stream of whole GB-Link frames, as the bridge firmware sends them.
+    // Whole GB-Link frames from the bridge firmware.
     writeStream(bytes) {
         if (!this.writer) return;
         this.writer.write(bytes).catch(() => {});
@@ -181,7 +185,7 @@ export class GbLinkUsb extends GbLinkBase {
         return typeof navigator !== 'undefined' && Boolean(navigator.usb);
     }
 
-    // The bootloader is offered too, so that a board already in update mode can be picked.
+    // Bootloader VID included so a board already in update mode can be picked.
     static requestDevice() {
         return navigator.usb.requestDevice({
             filters: [{ vendorId: GBLINK_VENDOR_ID }, { vendorId: BOOTROM_VENDOR_ID }],
@@ -221,8 +225,7 @@ export class GbLinkUsb extends GbLinkBase {
         }
     }
 
-    // One transfer per frame, in the order given: a mode change has to land before the
-    // data that follows it.
+    // One transfer per frame, in order: a mode change must land before the data after it.
     writeStream(bytes) {
         for (const frame of this.parser.push(bytes)) {
             const endpoint = frame.channel === GB_CHANNEL.COMMAND ? this.endpoints?.commandOut
@@ -255,8 +258,7 @@ export class GbLinkUsb extends GbLinkBase {
     }
 }
 
-// The vendor interface has two endpoints each way: commands out and status in on the
-// lower pair, data both ways on the upper.
+// Vendor interface: lower endpoint pair = command out / status in, upper pair = data.
 function findVendorInterface(device) {
     for (const iface of device.configuration?.interfaces ?? []) {
         for (const alternate of iface.alternates) {

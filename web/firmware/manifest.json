@@ -1,6 +1,6 @@
 {
   "bridge": {
-    "version": "2.0.2",
+    "version": "2.1.0",
     "chips": {
       "ESP32-S3": {
         "tested": true,
@@ -73,7 +73,7 @@
     }
   },
   "adapter": {
-    "version": "2.2.5",
-    "path": "adapter/gblink-wireless-2.2.5.uf2"
+    "version": "2.2.6",
+    "path": "adapter/gblink-wireless-2.2.6.uf2"
   }
 }

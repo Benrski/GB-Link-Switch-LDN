@@ -1,8 +1,8 @@
 #pragma once
 #include "pia_bin.h"
 
-/* Pia's reliable stream: selective repeat with a 128-bit ack bitmap, an RTO derived
-   from recent round trips, and fast retransmit on a repeated gap report. */
+/* Pia reliable stream: selective repeat, 128-bit ack bitmap, RTO from recent round
+   trips, fast retransmit on a repeated gap report. */
 
 #define PIA_RELIABLE_SLOTS 64
 #define PIA_RELIABLE_PAYLOAD 256

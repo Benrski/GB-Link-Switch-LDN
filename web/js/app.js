@@ -1,8 +1,6 @@
-// The page: the ESP32 board first, then one of two trees over the device modules. A Game
-// Boy Advance linked with the Switch takes the adapter and the play card; the Switch on
-// its own takes the trade card. The board's card and the adapter's are each drawn from
-// one view of their state: a line of status, perhaps a hint, and at most one thing to
-// press. Everything rarely needed sits under a fold.
+// Page controller. ESP32 board card first, then one of two trees: GBA + Switch (adapter and
+// play cards) or Switch only (trade card). Board and adapter cards render from one view
+// object each: status line, optional hint, at most one primary action.
 
 import { EspDevice, ESP_FILTERS, FAST_BAUD, newer, reopenPort, sleep } from './esp.js';
 import { GbLinkSerial, GbLinkUsb, BOOTROM_VENDOR_ID, GBLINK_VENDOR_ID } from './gblink.js';
@@ -19,10 +17,9 @@ import { POOL_SERVER, PoolClient } from './trade/pool.js';
 const $ = (id) => document.getElementById(id);
 
 const CHIP_NAMES = { esp32: 'ESP32', esp32c3: 'ESP32-C3', esp32c6: 'ESP32-C6', esp32s3: 'ESP32-S3' };
-// The board's pins for the standalone link, as [its transmit, to the adapter's GP9; its
-// receive, from the adapter's GP8].
+// Standalone UART link pins: [board TX -> adapter GP9, board RX <- adapter GP8].
 const LINK_PINS = { esp32: [17, 16], esp32c3: [5, 4], esp32c6: [2, 1], esp32s3: [2, 1] };
-// What dev boards print beside those pins, where that is not the GPIO number.
+// Dev-board silkscreen labels where they differ from the GPIO number.
 const LINK_PIN_LABELS = { esp32: ['TX2', 'RX2'] };
 const KEY_NAMES = {
     kek: 'aes_kek_generation_source',
@@ -34,21 +31,21 @@ const POLL_MS = 5000;
 
 const state = {
     manifest: null,
-    path: 'gba',            // which tree is on show: gba | switch
+    path: 'gba',            // shown tree: gba | switch
 
     esp: null,
-    espPort: null,          // a port that was picked but would not attach
+    espPort: null,          // picked port that failed to attach
     espPhase: 'idle',       // idle | choosing | connecting | installing | starting
-    espProblem: null,       // { code, text, hint } left by the last attempt
-    espNote: '',            // what the installer is doing
+    espProblem: null,       // { code, text, hint } from the last attempt
+    espNote: '',            // installer status text
     espProgress: null,
-    askForEsp: false,       // a remembered board let us down: offer the list next time
+    askForEsp: false,       // remembered board failed, show the chooser next time
     keys: null,
-    keysNote: null,         // { text, tone } about the last thing done with the keys
+    keysNote: null,         // { text, tone } for the last key operation
     replacingKeys: false,
     session: null,
     polls: 0,
-    signal: null,           // the Switch's signal in dBm, from firmware 2.0.2 on
+    signal: null,           // Switch signal in dBm (firmware 2.0.2+)
     pollTimer: null,
 
     adapter: null,
@@ -56,31 +53,31 @@ const state = {
     adapterPhase: 'idle',   // idle | choosing | connecting
     adapterProblem: null,
     askForAdapter: false,
-    bootDevice: null,       // an adapter that was picked while already in its bootloader
-    install: null,          // { step, manual, progress, image } while firmware goes on
+    bootDevice: null,       // adapter picked while already in its bootloader
+    install: null,          // { step, manual, progress, image } during install
     customUf2: null,
     uf2Note: null,
 
-    source: 'pool',         // what the trade card offers: pool | party
+    source: 'pool',         // trade source: pool | party
     poolServer: POOL_SERVER,
-    poolMon: null,          // what the pool is offering, while connected
+    poolMon: null,          // pool's Pokémon while connected
     menuOpen: false,
-    trading: false,         // both sides have confirmed, and the trade is under way
-    kept: [],               // what the Switch gave in swaps the pool did not confirm
+    trading: false,         // both sides confirmed, trade in progress
+    kept: [],               // Switch's Pokémon from swaps the pool did not confirm
     party: new Party(),
     partyNote: '',
     pickerSlot: 0,
-    trade: null,            // the session while a trade is running
+    trade: null,            // TradeSession while running
     tradeStop: null,        // its AbortController
     tradePhase: '',
     tradeTone: '',
     tradeDeclining: false,
     trades: 0,
-    offered: -1,            // the slot this page has offered, while connected
+    offered: -1,            // slot offered by this page while connected
     hiddenAt: 0,
     opponent: null,         // { name, party: [six or null] }
 
-    resetLoop: false,       // the adapter reports the game resetting it over and over
+    resetLoop: false,       // adapter reports repeated resets by the game
     bridge: null,
     bridgeTimer: null,
     bridgeNote: null,
@@ -101,7 +98,7 @@ function setProgress(id, fraction) {
     element.firstElementChild.style.width = `${Math.round((fraction ?? 0) * 100)}%`;
 }
 
-// Consecutive repeats of a message share one line, with a count.
+// Consecutive duplicates collapse into one line with a count.
 const logLines = [];
 let lastLogged = { key: '', count: 0 };
 function log(source, text) {
@@ -125,7 +122,7 @@ function describe(error) {
     return error?.message || String(error);
 }
 
-// Runs one of the browser's device choosers. Resolves with null when nothing was picked.
+// Opens a browser device chooser. Resolves null if nothing was picked.
 async function choose(request) {
     try {
         return await request();
@@ -252,8 +249,8 @@ async function onEspPickAnother() {
     await onEspConnect();
 }
 
-// A chip with USB of its own comes back from every reset as a new port object under the
-// same permission, which leaves the object the page was holding dead.
+// Native-USB chips re-enumerate as a new port object (same permission) on every reset,
+// leaving the old object dead.
 async function livePort(port) {
     if (!port) return null;
     let ports = [];
@@ -264,8 +261,7 @@ async function livePort(port) {
     return same.length === 1 ? same[0] : null;
 }
 
-// A board this page was given access to before is used without asking again, as long as
-// there is no doubt which one that is.
+// Reuses a previously granted board without prompting if exactly one matches.
 async function rememberedEspPort() {
     if (state.askForEsp) return null;
     let ports = [];
@@ -303,11 +299,16 @@ async function adoptEsp(device) {
     device.addEventListener('restarted', () => {
         if (state.esp !== device) return;
         log('board', 'restarted');
+        state.adapter?.quiet(30000);
         lastRoomLine = '';
         state.session = null;
         render();
     });
-    device.addEventListener('reattached', () => { if (state.esp === device) refreshEsp(); });
+    device.addEventListener('reattached', () => {
+        if (state.esp !== device) return;
+        state.adapter?.quiet(15000);
+        refreshEsp();
+    });
     device.addEventListener('failed', (event) => { if (state.esp === device) dropEsp({ code: 'gone', tone: 'bad', text: `The board stopped answering (${describe(event.detail)}).` }); });
     device.addEventListener('disconnected', () => { if (state.esp === device) dropEsp({ code: 'gone', tone: 'warn', text: 'The board was unplugged.' }); });
     await refreshEsp();
@@ -324,7 +325,7 @@ async function refreshEsp() {
     $('esp-version').textContent = !info ? 'Older than 2.0' : bundled && newer(bundled, info.version) ? `${info.version} (${bundled} available)` : info.version;
     $('esp-transport').textContent = info ? (info.transport === 'UART' ? `UART, ${esp.baudRate} baud` : info.transport) : '–';
     try {
-        // Left over from a page that was closed while it carried the link.
+        // Left over from a page closed while bridging.
         if (!state.bridge && (await esp.adapterPort()) === 'host') await esp.setAdapterPort('uart');
         await refreshKeys();
     } catch (error) {
@@ -348,8 +349,8 @@ async function dropEsp(problem = null) {
     render();
 }
 
-// The board repeats what it hears while it scans: the raw advertisement four times a
-// second, and the room it decodes from it. The log keeps the room, once per change.
+// While scanning the board reports raw advertisements (4/s) and the decoded room. Only room
+// changes are logged.
 let lastRoomLine = '';
 function onEspLine(line) {
     if (line.startsWith('LDN_HELLO') || line.startsWith('LDN_ADV ')) return;
@@ -360,6 +361,7 @@ function onEspLine(line) {
     log('board', line);
     if (line === 'LDN_BRIDGE no keys') refreshKeys();
     if (line.startsWith('LDN_BRIDGE ')) pollSoon();
+    if (line.startsWith('LDN_BRIDGE session (')) state.adapter?.quiet(30000);
 }
 
 let pollSoonTimer = null;
@@ -433,7 +435,7 @@ function installAdvice(error) {
     return { text: 'Installing failed.', hint: text };
 }
 
-// Two clicks rather than a dialog: the first arms the button for a few seconds.
+// Two-click confirm instead of a dialog. The first click arms the button for 6 s.
 const armed = new Map();   // button -> { label, timer }
 function twice(button, warning, action) {
     if (!armed.has(button)) {
@@ -523,14 +525,14 @@ async function pollSession() {
         if (state.polls++ % 3 === 0) state.signal = await esp.signal();
         $('esp-signal').textContent = roomWord(esp, state.session, state.signal);
     } catch {
-        return;   // restarting; the next poll will do
+        return;   // board restarting, retry next poll
     }
     renderSession();
 }
 
-// The board joins a room as soon as it reads one and stops reporting advertisements
-// while it is in, so the bridge's state comes first; while it scans, its reports say
-// whether a room is heard at all, and whether the keys can read it.
+// The board joins as soon as it reads a room and stops reporting advertisements once in,
+// so bridge state is checked first. While scanning, reports show whether a room is heard
+// and whether the keys can read it.
 function roomWord(esp, status, signal) {
     const dbm = signal === null || signal === undefined ? '' : `, ${signal} dBm`;
     if (status && status.state === 'run') return `joined${dbm}`;
@@ -569,7 +571,18 @@ function renderSession() {
             tone = 'warn';
         } else if (status.state === 'scan') {
             headline = 'Looking for a FireRed or LeafGreen room…';
-            hint = 'On the Switch, open the Trade Center or Colosseum as the group leader.';
+            hint = 'On the Switch, open the Trade Center or Colosseum as the group leader, or lead a group on the Game Boy Advance and the board hosts the room instead.';
+        } else if (status.state === 'host' && status.child === '1') {
+            headline = 'The Switch is in the Game Boy Advance’s group.';
+            hint = 'Leave the group on both consoles when you are done; the board then gets ready for the next one.';
+            tone = 'good';
+        } else if (status.state === 'host' && Number(status.members) > 0) {
+            headline = 'The Switch is in the room. Waiting for it to join the group.';
+            hint = 'On the Switch, pick the group the Game Boy Advance is leading.';
+            tone = 'good';
+        } else if (status.state === 'host') {
+            headline = 'Hosting a room for the Switch.';
+            hint = 'The Game Boy Advance is leading. On the Switch, open the same activity in the Direct Corner and join the group.';
         } else if (!running) {
             headline = 'Joining the Switch’s room…';
         } else if (status.child === '1') {
@@ -728,8 +741,7 @@ async function openAdapter(adapter, handle) {
     }
 }
 
-// The adapter noticed the game resetting it over and over. Shown where the player is
-// looking, because from the GBA's side it is a freeze with no message.
+// Shown on the page because on the GBA a reset loop is a silent freeze.
 function onResetLoop({ looping, startedUp }) {
     state.resetLoop = looping;
     if (looping) log('adapter', `the game keeps restarting the wireless adapter (${startedUp ? 'its commands are not getting through' : 'the adapter is not being recognised'})`);
@@ -754,9 +766,8 @@ async function adapterImage() {
     return parseUf2(await fetchBytes(state.manifest.base + state.manifest.adapter.path));
 }
 
-// Firmware goes on through the adapter's USB bootloader, which is a different USB device
-// from the running adapter: the browser has to be given access a second time. The steps
-// on the card walk through that.
+// Install goes through the RP2040 USB bootloader, a separate USB device that needs its own
+// permission grant. The card's steps guide the user through it.
 async function onAdapterInstall() {
     if (state.install || state.adapterPhase !== 'idle') return;
     if (!GbLinkUsb.available()) {
@@ -787,7 +798,7 @@ async function onAdapterInstall() {
     render();
     if (!adapter) return;
     if (state.bridge) await stopBridge();
-    // Let go of it first: it drops off the bus as it restarts, which is not an unplugging.
+    // Release first: it drops off the bus on restart, which is not an unplug.
     state.adapter = null;
     state.adapterInfo = null;
     try {
@@ -810,8 +821,8 @@ function cancelAdapterInstall() {
     render();
 }
 
-// A bootloader this page already has permission for announces itself; otherwise the
-// button opens the chooser.
+// Fires for a bootloader already granted to this page. Otherwise the button opens the
+// chooser.
 async function onUsbConnect(event) {
     const install = state.install;
     if (event.device?.vendorId !== BOOTROM_VENDOR_ID || !install || install.started) return;
@@ -862,8 +873,8 @@ async function flashBootloader(picoboot) {
     }
 }
 
-// The running firmware is a different USB device from the bootloader; permission for it
-// exists if it was connected here before.
+// Running firmware is a different USB device from the bootloader. Permission exists only
+// if it was connected here before.
 async function reconnectAdapter() {
     for (let attempt = 0; attempt < 8; attempt++) {
         await sleep(700);
@@ -953,9 +964,9 @@ function renderBridge() {
     $('bridge-sessions').textContent = String(stats.reattached);
 }
 
-// The adapter answers whichever side spoke to it last. One that is also connected to
-// this page has been answering over USB, so a silent first listen is followed by asking
-// the board to speak on the wires again, which is left alone while a GBA is linked.
+// The adapter answers whichever side spoke last. If it was answering this page over USB,
+// a silent first listen is followed by LDN_PICO_MODE to reclaim it over the wires
+// (skipped while a GBA is linked).
 async function onWiringCheck() {
     const esp = state.esp;
     if (!esp?.attached || state.bridge) return;
@@ -988,8 +999,8 @@ async function onWiringCheck() {
 
 // ---------------------------------------------------------------- the page's two trees
 
-// A Game Boy Advance linked with the Switch takes the adapter and the play card; the
-// Switch on its own takes the trade card. The board is set up the same way for both.
+// gba: GBA linked with the Switch (adapter and play cards). switch: Switch alone (trade
+// card). Board setup is the same for both.
 const PATHS = ['gba', 'switch'];
 const PATH_STORE = 'gblink-switch-path';
 
@@ -1037,7 +1048,7 @@ const SOURCES = ['pool', 'party'];
 
 const pooling = () => state.source === 'pool';
 
-// The board does the wireless; this card only needs it ready and something to trade.
+// Returns why a trade cannot start, or null.
 function tradeBlocker() {
     if (!state.esp) return 'Connect the ESP32 board in step 1 first.';
     if (!state.esp.info) return 'Install the firmware in step 1 first.';
@@ -1053,7 +1064,7 @@ function poolServer() {
     return /^wss?:\/\/\S+$/.test(address) ? address : null;
 }
 
-// tools: [act, glyph, what it does to this Pokémon] for the buttons beside each one.
+// tools: [act, glyph, label with % for the name, disabled reason] per slot button.
 function drawSlots(id, mons, { pick = false, marked = -1, mark = 'chosen', tools = [], empty = '–' } = {}) {
     const box = $(id);
     box.replaceChildren();
@@ -1092,7 +1103,7 @@ function drawSlots(id, mons, { pick = false, marked = -1, mark = 'chosen', tools
     });
 }
 
-// Saving and replacing sit on the Pokémon itself, so neither changes what is on offer.
+// Save/replace buttons act on the slot itself and do not change the current offer.
 function slotTools(tools, name) {
     const box = document.createElement('div');
     box.className = 'slot-tools';
@@ -1132,10 +1143,10 @@ function renderTrade() {
     $('their-name').textContent = state.opponent?.name ?? 'The Switch';
     $('our-name').textContent = pool ? 'The pool' : 'Yours';
     if (pool) {
-        // The pool's Pokémon comes into view with the Switch's team, as it does on the Switch.
+        // Pool Pokémon appears together with the Switch's team, as on the Switch.
         drawSlots('our-slots', [state.opponent ? state.poolMon : null], { marked: state.offered === 0 ? 0 : -1, mark: 'offered', empty: 'Shown with the Switch\'s team' });
     } else {
-        // The party is what the Switch was shown, so it changes only between visits.
+        // The Switch has already seen this party, so slots are replaceable only when disconnected.
         const locked = running ? 'Disconnect to put a different Pokémon here.' : '';
         drawSlots('our-slots', state.party.slots, {
             pick: true, empty: 'Empty',
@@ -1148,7 +1159,7 @@ function renderTrade() {
     $('kept').hidden = state.kept.length === 0;
     drawSlots('kept-slots', state.kept, { tools: [['save', '↓', 'Save % as a .pk3 file'], ['forget', '×', 'Remove % from this list']] });
 
-    // What happened last time stays on the card until something is in the way of the next.
+    // The last result stays shown until a blocker replaces it.
     const idle = 'Create a Trade Center room on the Switch, then connect.';
     const status = running ? state.tradePhase : blocker ?? (state.tradePhase || idle);
     setLine('trade-status', status, running ? state.tradeTone : blocker ? 'warn' : state.tradeTone);
@@ -1156,9 +1167,8 @@ function renderTrade() {
     $('trade-dot').className = `dot ${running ? state.tradeTone || 'busy' : blocker ? '' : 'good'}`.trim();
     $('trade-connect').hidden = running;
     $('trade-connect').disabled = Boolean(blocker);
-    // With the pool the page waits for one of two answers under the Pokémon they are
-    // about, and the Switch can leave the menu with a single cancel until one is given.
-    // Neither can be changed once the trade is under way.
+    // Pool: Accept/Cancel under the Pokémon. Until one is chosen the Switch can leave the
+    // menu with a single cancel. Both lock once the trade is under way.
     const answering = running && pool && Boolean(state.opponent && state.poolMon);
     $('pool-answers').hidden = !answering;
     $('pool-accept').setAttribute('aria-pressed', String(state.offered === 0));
@@ -1226,7 +1236,7 @@ async function onTradeConnect() {
         state.tradeTone = stopped ? '' : 'bad';
         if (!stopped) log('trade', describe(error));
     } finally {
-        // The board may have gone away during the session, which is what ended it.
+        // The board may have disconnected, ending the session.
         state.trade = null;
         state.tradeStop = null;
         state.opponent = null;
@@ -1261,8 +1271,8 @@ function onTradeEvent(event) {
             state.tradeTone = 'good';
             break;
         case 'menu': {
-            // Nothing is on offer until the player here says so, which is what lets the
-            // Switch leave the menu with a single cancel.
+            // Nothing is offered until the local player chooses, so the Switch can leave the
+            // menu with a single cancel.
             state.menuOpen = true;
             const name = state.poolMon ? describeMon(state.poolMon).name : 'the pool\'s Pokémon';
             state.tradePhase = pool
@@ -1309,7 +1319,7 @@ function onTradeEvent(event) {
                 state.party.receive(event.slot, event.pk3);
                 state.trades++;
                 state.offered = -1;
-                // The Switch's party has changed too; it sends the new one once both games have saved.
+                // The Switch's party changed too; it resends it after both games save.
                 state.opponent = null;
                 state.tradePhase = `Traded. ${describeMon(state.party.slots[event.slot]).name} is now in slot ${event.slot + 1}.`;
                 state.tradeTone = 'good';
@@ -1393,8 +1403,7 @@ function savePk3(pk) {
     setTimeout(() => URL.revokeObjectURL(link.href), 5000);
 }
 
-// What the Switch gave in a swap the pool did not confirm. It belongs to the player, so
-// it stays in this browser until they have saved it.
+// Switch's Pokémon from an unconfirmed pool swap. Kept in localStorage until removed.
 function keep(pk) {
     state.kept.push(pk);
     storeKept();
@@ -1502,7 +1511,7 @@ function drawSteps() {
         : 'Restart the adapter in update mode';
     for (const item of list.children) {
         const index = order.indexOf(item.dataset.step);
-        // By hand, the first two steps are both the user's and both wait on the button.
+        // Manual install: the first two steps both wait on the user's BOOTSEL press.
         const current = index === at || (install.manual && install.step === 'restart' && index <= 1);
         item.className = current ? 'current' : index < at ? 'done' : '';
     }
@@ -1528,7 +1537,7 @@ function wireUp() {
     for (const name of ['dragenter', 'dragover']) drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.add('over'); });
     for (const name of ['dragleave', 'drop']) drop.addEventListener(name, (event) => { event.preventDefault(); drop.classList.remove('over'); });
     drop.addEventListener('drop', (event) => onKeysFile(event.dataTransfer?.files?.[0]));
-    // A file dropped beside the target would otherwise replace the page.
+    // Stops a file dropped outside the target from replacing the page.
     for (const name of ['dragover', 'drop']) window.addEventListener(name, (event) => event.preventDefault());
 
     $('adapter-primary').addEventListener('click', () => adapterActions.primary?.());
@@ -1601,8 +1610,7 @@ function wireUp() {
     });
     $('log-copy').addEventListener('click', () => navigator.clipboard?.writeText(logLines.join('\n')));
 
-    // A tab the browser is not showing has its timers slowed to about one a second,
-    // which is far too slow to hold the Switch's link.
+    // Hidden tabs throttle timers to ~1/s, too slow to hold the Switch link.
     document.addEventListener('visibilitychange', () => {
         if (!state.trade) return;
         if (document.hidden) state.hiddenAt = Date.now();
@@ -1618,13 +1626,13 @@ function wireUp() {
     });
 
     navigator.usb?.addEventListener('connect', onUsbConnect);
-    // Hand the adapter port back if the page goes away while it carries the link.
+    // Release the adapter port if the page closes while bridging.
     window.addEventListener('pagehide', () => { if (state.bridge) state.bridge.stop(); });
 }
 
 async function start() {
     wireUp();
-    // A link to one of the trees wins over the one used last.
+    // URL hash overrides the remembered tree.
     const asked = location.hash.slice(1);
     state.path = PATHS.includes(asked) ? asked : PATHS.includes(remembered(PATH_STORE)) ? remembered(PATH_STORE) : 'gba';
     state.source = remembered(SOURCE_STORE) === 'party' ? 'party' : 'pool';

@@ -1,21 +1,20 @@
-// The game this page plays, as the board's bridge sees it: join the room it offers for
-// trading, run the wireless adapter's name exchange, then answer each frame from the
-// Switch with one of our own. Everything below the frames is the board's work.
+// Client side of the adapter link: joins the trade room offered by the board, runs the
+// adapter name exchange, then answers each Switch frame with one frame.
 
 import { DataError, b32, equal, u16, w16, w32 } from './bytes.js';
 import { RFU, clientFrame, command, hostPayload } from './adapter.js';
 import { gameData, ni, words } from './rfu.js';
 
-// pokefirered's union-room activities. The board offers one room per activity.
+// pokefirered union-room activity id for trading.
 const TRADE = 4;
 
 export class AdapterLink {
-    // send(frame): hand one whole adapter frame to the board.
+    // send(frame): passes one whole adapter frame to the board.
     constructor({ engine, send, activity = TRADE }) {
         this.engine = engine;
         this.send = send;
         this.activity = activity;
-        this.room = null;          // the devid of the room being offered for trading
+        this.room = null;          // devid of the trade room
         this.requested = false;
         this.connected = false;
         this.disconnected = false;
@@ -54,7 +53,7 @@ export class AdapterLink {
         this.afterFrame();
     }
 
-    // The board offers one room per activity; take the one for trading.
+    // The board offers one room per activity; join the one matching this.activity.
     onBeacon(header, frame) {
         const packet = new Uint8Array(24);
         for (let i = 0; i < 6; i++) w32(packet, i * 4, b32(frame, 12 + i * 4));
@@ -67,8 +66,8 @@ export class AdapterLink {
         this.send(command(RFU.CONNECT_REQ, devid));
     }
 
-    // One frame from the Switch: during the name exchange it carries the adapter's own
-    // state, and afterwards the five command slots of the link.
+    // Switch frame. During the name exchange it carries adapter state (bits 14-17 of the
+    // first 3 bytes); in state 4 it carries 14-byte command slots.
     deliver(payload) {
         const slots = [];
         if (payload.length > 1) {
@@ -97,8 +96,7 @@ export class AdapterLink {
             this.emit('Adapter name exchange complete');
         }
         let out = this.engine.tick();
-        // Nothing to say while both players sit in the room: the game still presses a
-        // key every frame, which is what keeps it seated.
+        // Idle while seated: send a key report (0xbe00) every frame to stay seated.
         if (out[0] === 0 && this.engine.established && this.engine.hostInSeat && this.engine.inSeatPhase) {
             this.heldCount = (this.heldCount + 1) & 255;
             out = words(0xbe00, (this.heldCount << 8) | (this.heldKey === 0 ? 17 : this.heldKey));

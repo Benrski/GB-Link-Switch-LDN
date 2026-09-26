@@ -1,7 +1,5 @@
-// Installs firmware on the GB-Link adapter (RP2040) over WebUSB with picoflash. The
-// adapter has to be in its USB bootloader, where it shows up as "RP2 Boot": firmware
-// 2.1.2 and later goes there on command, anything else by holding BOOTSEL while
-// plugging in.
+// Flashes the GB-Link adapter (RP2040) over WebUSB with picoflash. Requires the USB bootloader
+// ("RP2 Boot"). Firmware 2.1.2+ enters it on command; older firmware needs BOOTSEL at plug-in.
 
 import { Picoboot } from '../vendor/picoflash/picoboot.js';
 import { Target } from '../vendor/picoflash/target.js';
@@ -11,7 +9,7 @@ import { BOOTROM_VENDOR_ID } from './gblink.js';
 const SECTOR = 4096;
 const ERASE_STEP = 16 * SECTOR;
 const WRITE_STEP = 4 * SECTOR;
-const ERASE_SHARE = 0.3;      // of the progress bar
+const ERASE_SHARE = 0.3;      // fraction of the progress bar
 const REBOOT_DELAY_MS = 500;
 
 export function parseUf2(bytes) {
@@ -21,9 +19,8 @@ export function parseUf2(bytes) {
     return { address: image.address, data: padded };
 }
 
-// Needs a user gesture. The chooser only renews the permission: Linux can list several
-// stale "RP2 Boot" entries for one board, so every granted bootloader is tried and the
-// one that opens is used.
+// Needs a user gesture. The chooser only renews permission. Linux can list several stale
+// "RP2 Boot" entries for one board, so each granted bootloader is tried until one opens.
 export async function chooseBootloader() {
     await Picoboot.requestDevice([new Target('RP2040')]);
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -64,14 +61,14 @@ export async function flashAdapter(picoboot, image, { onStatus = () => {}, onPro
             onProgress(ERASE_SHARE + (1 - ERASE_SHARE) * Math.min(1, (at + WRITE_STEP) / image.data.length));
         }
         onStatus('Written. Restarting the adapter…');
-        try { await connection.reboot(REBOOT_DELAY_MS); } catch {}   // the link drops as it restarts
+        try { await connection.reboot(REBOOT_DELAY_MS); } catch {}   // link drops on reboot
     } finally {
         await release(picoboot);
     }
     await forgetBootloaders();
 }
 
-// Right after the bootloader enumerates, its device node is not always openable yet.
+// The bootloader's device node may not be openable right after enumeration.
 async function connectWithRetry(picoboot) {
     for (let attempt = 0; ; attempt++) {
         try {
@@ -85,15 +82,14 @@ async function connectWithRetry(picoboot) {
     }
 }
 
-// disconnect() closes only an established connection; a connect() that failed part-way
-// leaves the device open, and an open handle on a board that restarts lingers as a
-// phantom entry.
+// disconnect() only closes an established connection. A partly failed connect() leaves the
+// device open, and an open handle across a board restart lingers as a phantom entry.
 async function release(picoboot) {
     try { await picoboot.disconnect(); } catch {}
     try { if (picoboot.device?.opened) await picoboot.device.close(); } catch {}
 }
 
-// Every grant for the bootloader is stale once the board has left it.
+// Bootloader grants are stale once the board has left it.
 async function forgetBootloaders() {
     try {
         for (const device of await navigator.usb.getDevices()) {

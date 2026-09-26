@@ -2,10 +2,9 @@ using System.Security.Cryptography;
 
 namespace Frlg.Trade.Core;
 
-// Pia session plumbing shared by the emulated GBA (Simulator) and the GB-Link relay: connection setup,
-// the reliable stream, K acknowledgements, host polling credits, and the emulated wireless adapter's
-// "W" frames (WC connect, WA accepted, WT data, WD disconnect). Subclasses supply and consume the
-// adapter payloads.
+// Pia session shared by the emulated GBA (Simulator) and the GB-Link relay: connection setup, reliable
+// stream, K acks, host polling credits and adapter "W" frames (WC connect, WA accepted, WT data,
+// WD disconnect). Subclasses supply and consume the adapter payloads.
 public abstract class PiaLink : IDisposable
 {
     public PiaConnection Connection { get; }
@@ -16,9 +15,8 @@ public abstract class PiaLink : IDisposable
     private readonly Dictionary<int, int> packetIds = [];
     private readonly HashSet<int> seen = [], kInflight = [];
     private readonly Queue<int> seenOrder = [];
-    // Reliable frames are handed on in strict sequence order, never arrival order: Pia is selective
-    // repeat, so a retransmit arrives late, and the games' link layer validates a +1-mod-8 sequence on
-    // the frames it receives — one reordered pair desyncs it permanently.
+    // Reliable frames are delivered in sequence order. Pia uses selective repeat, so retransmits arrive
+    // late, and the games' link layer checks a +1-mod-8 sequence; one reordered pair desyncs it.
     private readonly Dictionary<int, byte[]> resequence = [];
     private int nextDeliver = -1;
     public int Reordered { get; private set; }
@@ -44,13 +42,13 @@ public abstract class PiaLink : IDisposable
         crypto = new(ssid); ours = ourIp; host = hostIp; this.send = send;
         Connection = new(ourMac, hostMac, ours); connectId[0] |= 1;
     }
-    // Whether to send the WC connect request now (the relay waits for the real GBA's connect).
+    // Send the WC connect request now? The relay waits for the real GBA's connect.
     protected virtual bool WantConnect => true;
-    // A WT data frame from the host, host framing: byte 8 = adapter send length, payload from byte 12.
+    // WT data frame from the host: byte 8 = adapter send length, payload from byte 12.
     protected abstract void Deliver(byte[] frame);
-    // The next WT frame to send, already wrapped with Rfu.Wrap, or null when nothing is pending.
+    // Next WT frame (already Rfu.Wrap'd), or null if nothing is pending.
     protected abstract byte[]? Next();
-    // Called on ticks where the host is connected but no send is possible (window full or no credit).
+    // Tick with the host connected but no send possible (window full or no credit).
     protected virtual void OnSendSkipped() { }
     protected virtual void AfterTick() { }
     protected uint NextTime() => timestamp++;
@@ -90,7 +88,7 @@ public abstract class PiaLink : IDisposable
         if (nextDeliver < 0) nextDeliver = seq;
         if (seq != nextDeliver)
         {
-            // Ahead of the gap: hold it until the missing frame is retransmitted. Behind it: already handed on.
+            // Ahead of the gap: hold until the missing frame arrives. Behind: already delivered.
             if (Bin.Less(nextDeliver, seq) && ((seq - nextDeliver) & 65535) < 4096) { resequence[seq] = inner; Reordered++; }
             return;
         }
@@ -168,9 +166,9 @@ public abstract class PiaLink : IDisposable
         Batch(batch);
         AfterTick();
     }
-    // Retransmission pacing: the emulated GBA slows retransmits while seated in the trade room.
+    // Slower retransmits; the emulated GBA uses this while seated in the trade room.
     protected virtual bool SlowRetransmit => false;
-    // Before WC is sent the host still expects acknowledgements of its stream.
+    // Acks the host's stream before WC is sent.
     private void Keepalive(double now)
     {
         var batch = Reliable.Retransmit(now, 2);

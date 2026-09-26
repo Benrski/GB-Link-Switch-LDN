@@ -6,8 +6,9 @@ Game Boy Advance or from your PC.
 - **GBA to Switch.** A GBA running FireRed, LeafGreen or Emerald joins the Switch's
   Trade Center or Colosseum over the Switch's own local wireless, as if it were another
   Switch. Trades and battles.
-- **PC to Switch.** No GBA needed: trade with the Switch from the web page, from an
-  online Wonder Trade pool or from your own `.pk3` files.
+- **PC to Switch.** Only have a Switch? All you need is an ESP32 board, no GBA and no
+  GB-Link. Trade with the Switch from the web page, from an online Wonder Trade pool or
+  from your own `.pk3` files.
 
 Everything is set up and played from **<https://switch.gblink.io>**.
 
@@ -47,16 +48,12 @@ only the ESP32 board.
   | ESP32-C3 | native USB |
 
 - A Switch with FireRed or LeafGreen, and the `prod.keys` file from your Switch. The
-  wireless is encrypted with keys from the console, so the board needs four of them.
-  The page reads the file and sends those four values to the board over USB. Nothing is
-  uploaded anywhere.
-- For GBA to Switch: a GB-Link adapter, a **Game Boy Color link cable** and a GBA with
-  FireRed, LeafGreen or Emerald. A Game Boy Advance cable will not work: it does not
-  connect both data lines at once, and the wireless adapter mode needs both. The page
-  installs the adapter's firmware, from <https://github.com/GB-Link/GBLink-Firmware>.
-  Emerald can trade once the Switch's game is
-  far enough along to link with Ruby, Sapphire and Emerald (Celio's machine on One
-  Island fixed), the same rule as between two GBAs.
+  board needs four keys from it to talk to the Switch. The page sends them to the board
+  over USB; nothing is uploaded anywhere.
+- For GBA to Switch: a GB-Link adapter, a **Game Boy Color link cable** (a Game Boy
+  Advance cable will not work) and a GBA with FireRed, LeafGreen or Emerald. Emerald can
+  only trade once the Switch's game has fixed Celio's machine on One Island, just like
+  between two GBAs.
 
 ## Setting up
 
@@ -75,6 +72,9 @@ On the Switch, go upstairs in a Pokémon Center to the Direct Corner, pick Trade
 or Colosseum and become the leader. On the GBA, pick the same thing and join the group.
 The Switch shows up after a few seconds. When you leave the room the board restarts and
 is ready again about ten seconds later.
+
+It also works the other way round: lead the group on the GBA, then join it from the
+Switch.
 
 ### PC to Switch
 
@@ -97,17 +97,15 @@ and Linux.
 
 | Directory | Contents |
 | --- | --- |
-| [`web`](web/README.md) | The web client: installs both firmwares, stores the keys, carries the link over USB, trades by itself |
-| [`firmware`](firmware/README.md) | The ESP32 firmware, one source tree built for four chips, with build and test tools |
-| [`host`](host/README.md) | The desktop app and the console tools, in C# |
+| [`web`](web/README.md) | The web page |
+| [`firmware`](firmware/README.md) | The ESP32 firmware |
+| [`host`](host/README.md) | The desktop app, in C# |
 
 ## Building
 
-The web client installs prebuilt firmware, so nothing needs building to play.
-[`firmware/README.md`](firmware/README.md) covers building the ESP32 firmware with the
-pinned ESP-IDF v6.1 and how a session runs; `firmware/tools/package_web.py` refreshes the
-images the page installs. [`host/README.md`](host/README.md) covers the desktop app. The
-adapter firmware comes from [GBLink-Firmware](https://github.com/GB-Link/GBLink-Firmware).
+Nothing needs building to play: the web page installs prebuilt firmware. To build it
+yourself, see [`firmware/README.md`](firmware/README.md). The adapter firmware comes
+from [GBLink-Firmware](https://github.com/GB-Link/GBLink-Firmware).
 
 ## Credits
 

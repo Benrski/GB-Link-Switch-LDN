@@ -95,7 +95,7 @@ public sealed class TradeSession(Action<object> emit)
         }
         finally
         {
-            // Cancellation does not require a board-specific reset or an external process.
+            // No board reset or external process needed to cancel.
             if (started) { try { device.Stop(); } catch (Exception error) { Record("Stop acknowledgement unavailable: " + error.Message); } }
         }
     }

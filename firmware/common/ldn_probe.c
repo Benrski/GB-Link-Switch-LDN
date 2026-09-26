@@ -92,11 +92,10 @@ static void export_advertisement(void)
         hex[2 * i + 1] = digits[body[i] & 15];
     }
     hex[2 * length] = '\0';
-    /* In a session the advertisements only feed the bridge; printing each one would
-       cost the relay loop time. */
+    /* Not printed during a session, to save relay loop time. */
     const bool quiet = pia_bridge_in_session();
     if (!quiet) printf("LDN_ADV " MACSTR " %u %s\n", MAC2STR(source), channel, hex);
-    /* Also decoded on-device, for the standalone bridge. */
+    /* Decoded on-device for the standalone bridge. */
     static ldn_network_t room;
     if (ldn_decode_advertisement(body, length, source, channel, &room)) {
         const char *host_name = "";
@@ -146,7 +145,7 @@ static void remember_action(const uint8_t *header, const uint8_t *body,
     portEXIT_CRITICAL(&s_stats_lock);
 }
 
-/* Signal strength of the LDN action frames heard since the last report. */
+/* RSSI of LDN action frames since the last report. */
 static int8_t s_last_ldn_rssi;
 static int s_rssi_count, s_rssi_sum, s_rssi_min, s_rssi_max;
 
@@ -188,7 +187,7 @@ static void promiscuous_rx(void *buffer, wifi_promiscuous_pkt_type_t type)
     remember_association(frame, length);
 
     /* Management type 0, action subtype 13, little-endian frame control. */
-    /* sig_len includes the four-byte FCS, which is not action payload. */
+    /* sig_len includes the 4-byte FCS. */
     if (length >= 29 && (frame[0] & 0xfcU) == 0xd0U) {
         remember_action(frame, frame + 24, length - 28, false, packet->rx_ctrl.channel, packet->rx_ctrl.rssi);
     }
@@ -287,8 +286,8 @@ static bool parse_hex(const char *text, uint8_t *output, size_t output_len,
 
 static int probe_sta_connect(uint8_t *bssid)
 {
-    /* Copy mode takes raw IE bytes. Reference mode requires a two-byte length
-       prefix and overwrites it; passing the IE directly corrupts its tag/size. */
+    /* Copy mode (last arg 0) takes raw IE bytes. Reference mode expects a 2-byte
+       length prefix and overwrites it, corrupting a bare IE's tag/size. */
     int result = esp_wifi_set_appie_internal(
         LDN_WIFI_APPIE_RSN, s_ldn_rsn_ie, sizeof(s_ldn_rsn_ie), 0);
     if (result != 0) {
@@ -301,7 +300,7 @@ static int probe_sta_connect(uint8_t *bssid)
         return result;
     }
 
-    /* The stock callback rebuilds the RSN IE before starting association. */
+    /* The stock callback rebuilds the RSN IE; reinstall ours. */
     result = esp_wifi_set_appie_internal(
         LDN_WIFI_APPIE_RSN, s_ldn_rsn_ie, sizeof(s_ldn_rsn_ie), 0);
     if (result != 0) {
@@ -397,9 +396,8 @@ static void install_ldn_keys(void)
         sizeof(sequence), s_ccmp_key, sizeof(s_ccmp_key), group_flags);
 
     ESP_LOGI(TAG, "key install: pairwise=%d group=%d", pairwise, group);
-    /* Readback is diagnostic only: the pinned S3 driver accepts both keys but reads back neither
-       (pairwise getter unsupported, group getter answers without the key). The encrypted LDN
-       authentication exchange is what verifies them. */
+    /* Readback is diagnostic only. The pinned S3 driver reads back neither key (no pairwise
+       getter, group getter omits the key). The encrypted LDN auth exchange verifies them. */
     int pairwise_read = 0, group_read = 0;
     const bool pairwise_ok = read_key_back(0, LDN_KEY_FLAG_PAIRWISE, s_ccmp_key, &pairwise_read);
     const bool group_ok = read_key_back(1, LDN_KEY_FLAG_GROUP, s_ccmp_key, &group_read);
@@ -473,7 +471,7 @@ esp_err_t ldn_session_configure(const char *ssid, const char *bssid, const char 
     memcpy(s_ssid, ssid, 33);
     memcpy(s_target_bssid, host, 6); memcpy(s_ccmp_key, secret, 16);
     memset(secret, 0, sizeof(secret));
-    /* A new station identity avoids reusing a CCMP replay context on reconnect. */
+    /* Random station MAC per join, so a reconnect gets a fresh CCMP replay context. */
     esp_wifi_stop();
     esp_fill_random(s_station_mac, 6); s_station_mac[0] = (s_station_mac[0] & 0xfc) | 2;
     esp_err_t result = esp_wifi_set_mac(WIFI_IF_STA, s_station_mac);
@@ -505,14 +503,12 @@ static void run_private_join(void)
 {
     s_probe_task = xTaskGetCurrentTaskHandle();
 #if CONFIG_FREERTOS_NUMBER_OF_CORES == 1
-    /* With one core the Pia tick (16.7 ms) must outrank the Pico UART pump (priority
-       10, 44 ms of driver buffer). Stays below the Wi-Fi and TCP/IP tasks (23 and 18)
-       and yields every iteration, so the pump runs in the gaps. */
+    /* Single core: the Pia tick (16.7 ms) must outrank the Pico UART pump (priority 10,
+       44 ms of driver buffer). Below Wi-Fi and TCP/IP (23, 18); yields every pass. */
     vTaskPrioritySet(NULL, 11);
 #endif
     ldn_control_init(s_station_netif, s_target_bssid);
-    /* Claim the zstd context after the transport is up but before a session starts;
-       it needs one large contiguous block and nothing else may take it. */
+    /* Claim the zstd context before a session starts; it needs one large contiguous block. */
     printf("LDN_PIA_PREPARE ok=%d size=%u heap=%u largest=%u psram=%u\n",
            pia_crypto_prepare(), (unsigned)pia_crypto_dctx_size(),
            (unsigned)esp_get_free_heap_size(),
@@ -532,14 +528,13 @@ static void run_private_join(void)
             ldn_session_stop(); printf("LDN_ERROR ASSOCIATION_TIMEOUT\n");
         }
         if (now - last_advertisement >= 250000) { export_advertisement(); last_advertisement = now; }
-        /* The GBA<->Switch protocol ticks every ~16.7 ms, so any delay here is latency
-           in the child state the Switch sees. */
+        /* The GBA<->Switch protocol ticks every ~16.7 ms; keep this delay minimal. */
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
-/* A board that needs setting up before the radio starts (an antenna switch, a power
-   rail) defines these; the defaults are for boards that need nothing. */
+/* Board hooks run before the radio starts (antenna switch, power rail). Weak no-op
+   defaults. */
 __attribute__((weak)) void bridge_board_init(void) {}
 __attribute__((weak)) bool bridge_board_antenna(bool external) { (void)external; return false; }
 

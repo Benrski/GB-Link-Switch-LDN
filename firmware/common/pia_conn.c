@@ -4,7 +4,7 @@
 
 #include "esp_random.h"
 
-/* A random station id other than zero and `taken`. */
+/* Random station id, nonzero and not `taken`. */
 static uint16_t station_id(uint16_t taken)
 {
     uint16_t id;
@@ -72,8 +72,8 @@ static int build_join(const pia_conn_t *c, uint8_t *out, size_t cap)
     return (int)o;
 }
 
-/* A net protocol acknowledgement: the request's type plus one and its sequence id, sent
-   the way the host sends its own net messages (packet id 0). */
+/* Net protocol ack: request type + 1 and its sequence id, packet id 0 like the host's
+   own net messages. */
 static void net_ack(pia_conn_t *c, uint8_t type, const uint8_t *sequence, uint16_t src)
 {
     uint8_t reply[8] = {0x01, type, 0x00, 0x00, sequence[0], sequence[1], sequence[2], sequence[3]};
@@ -86,11 +86,10 @@ void pia_conn_feed(pia_conn_t *c, const pia_message_t *m, int tick)
     const uint8_t *p = m->payload;
     if (m->protocol == 1 && m->length >= 8)
     {
-        /* Net protocol (Pia 6.3x): the host repeats a network status update (0x11), network
-           property update (0x50) or keep-alive (0x80) every 500 ms until every station
-           acknowledges it with type + 1 and the same sequence id. A property update left
-           unacknowledged is retried for about ten minutes, then the host stops taking this
-           station's traffic and the session freezes mid-trade. */
+        /* Net protocol (Pia 6.3x): the host repeats status update (0x11), property update
+           (0x50) and keep-alive (0x80) every 500 ms until each station acks with type + 1
+           and the same sequence id. An unacked property update is retried for ~10 min,
+           then the host drops this station's traffic and the trade freezes. */
         const uint8_t type = p[1];
         const bool request = type == 0x11 || type == 0x50 || type == 0x80;
         if (request)
@@ -106,7 +105,7 @@ void pia_conn_feed(pia_conn_t *c, const pia_message_t *m, int tick)
             if (c->host_id == 0) c->host_id = bin_b16(p + 8);
             if (c->our_id == c->host_id) c->our_id = station_id(c->host_id);
 
-            /* Source id 0 and packet id 0: the form of acknowledgement the host takes. */
+            /* Source id 0, packet id 0: the ack form the host accepts. */
             net_ack(c, 0x12, p + 4, 0);
 
             uint8_t join[PIA_OUTBOX_PAYLOAD];
@@ -119,9 +118,9 @@ void pia_conn_feed(pia_conn_t *c, const pia_message_t *m, int tick)
         }
         else if (request)
         {
-            /* The host does not take an acknowledgement sent with the station id and a
-               running packet id. Two forms are sent: the one it takes (source 0, packet 0)
-               and the one it uses itself (station id, packet 0); a duplicate is harmless. */
+            /* The host ignores acks with the station id and a running packet id. Send both
+               source 0 / packet 0 (accepted) and station id / packet 0 (the host's own
+               form). Duplicates are harmless. */
             net_ack(c, (uint8_t)(type + 1), p + 4, 0);
             net_ack(c, (uint8_t)(type + 1), p + 4, c->our_id);
         }

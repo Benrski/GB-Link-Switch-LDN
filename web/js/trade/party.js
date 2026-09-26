@@ -1,5 +1,5 @@
-// The six Pokémon this page offers the Switch. Kept in the browser between visits, and
-// started from the party the project ships when there is nothing saved yet.
+// Six-slot party offered to the Switch. Persisted in localStorage; falls back to the
+// bundled default party.
 
 import { fromHex, toHex } from './bytes.js';
 import { Pk3, parse } from './pk3.js';
@@ -25,7 +25,7 @@ export class Party {
         if (this.selected < 0) this.selected = 0;
     }
 
-    // What was saved here before, else the party the project ships.
+    // Loads the saved party, else the bundled default.
     async load(fetchDefault = true) {
         const saved = localStorage.getItem(STORE);
         if (saved) {
@@ -63,7 +63,7 @@ export class Party {
         return true;
     }
 
-    // A Pokémon the Switch sent, into the slot that was traded away.
+    // Stores a received Pokémon in the traded slot.
     receive(index, bytes) {
         this.slots[index] = parse(bytes);
         this.save();

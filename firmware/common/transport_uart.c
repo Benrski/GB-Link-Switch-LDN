@@ -9,10 +9,8 @@ static uint32_t dropped;
 
 void bridge_transport_init(void)
 {
-    /* The console carries commands and, at most, the adapter's frames: a few kilobytes
-       a second, read every millisecond. The chip this transport serves has the least
-       memory of the four, and a ring sized for a host that streams datagrams left
-       nothing for the GB-Link's UART. */
+    /* Console traffic is a few KB/s, read every 1 ms. 4 KiB rings keep RAM free for
+       the GB-Link UART on the original ESP32, the smallest of the four chips. */
     ESP_ERROR_CHECK(uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, 4096, 4096, 0, NULL, 0));
     uart_vfs_dev_use_driver(CONFIG_ESP_CONSOLE_UART_NUM);
 }

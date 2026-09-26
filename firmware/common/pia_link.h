@@ -2,9 +2,9 @@
 #include "pia_conn.h"
 #include "pia_reliable.h"
 
-/* The Pia session as the GBA relay uses it: reliable stream plumbing, K
-   acknowledgements, host polling credits, strict-order delivery, and the emulated
-   wireless adapter's W frames (WC connect, WA accepted, WT data, WD disconnect). */
+/* Pia session for the GBA relay: reliable stream, K acknowledgements, host polling
+   credits, in-order delivery, and the adapter's W frames (WC connect, WA accepted,
+   WT data, WD disconnect). */
 
 #define PIA_SEEN_BITS 8192
 #define PIA_SEEN_RING 1024
@@ -13,9 +13,8 @@
 #define PIA_TIME_RING 256
 #define PIA_K_QUEUE 32
 #define PIA_OUT_SLOTS 64
-/* Queued child frames above which superseded ones are shed. The GBA moves its own
-   avatar only when the parent echoes its input back, so every frame waiting here is
-   a frame of lag on the GBA's own screen. */
+/* Queue depth above which superseded child frames are shed. The GBA moves its avatar
+   only when the parent echoes its input, so each queued frame is a frame of lag. */
 #define PIA_OUT_SHED_AT 3
 #define PIA_OUT_BYTES 128
 
@@ -59,13 +58,13 @@ typedef struct
     bool accepted, host_disconnected, connect_wanted;
     int received, decrypt_failures, sent, reordered, hold_dropped;
     int rx_seen, rx_wrong_source, rx_short, rx_bad_frame, rx_messages, rx_unzip_fail;
-    int rx_body_max, rx_msgs_max;                  /* largest decompressed body / message count in one datagram */
-    int rx_unzip_last_error, rx_unzip_last_len;   /* why the newest undecodable datagram failed, its wire size */
+    int rx_body_max, rx_msgs_max;                  /* per-datagram maxima */
+    int rx_unzip_last_error, rx_unzip_last_len;   /* last unzip error code, wire size */
     uint8_t rx_first[16];
     int rx_first_len, rx_first_zipped, rx_first_pad, rx_first_footer;
 
-    /* Child frames waiting for the Switch. Lossless: each carries a mod-8 sequence
-       the parent validates, so a dropped or reordered one desyncs the trade. */
+    /* Child frames waiting for the Switch. Each carries a mod-8 sequence the parent
+       checks; a dropped or reordered frame desyncs the trade. */
     struct { uint8_t data[PIA_OUT_BYTES]; uint16_t length; } outbound[PIA_OUT_SLOTS];
     int out_head, out_count, high_water, repeated, overflow;
     uint8_t last_enqueued[PIA_OUT_BYTES];
@@ -73,19 +72,17 @@ typedef struct
     uint8_t idle[PIA_OUT_BYTES];
     uint16_t idle_len;
     bool has_idle;
-    int idle_evicted;                 /* idle child frames dropped to keep command frames queued */
+    int idle_evicted;                 /* idle frames dropped for commands */
 
-    /* Called on each queued child frame just before it is wrapped and sent, so a
-       per-frame sequence is stamped only on frames that leave. */
+    /* Called on each child frame just before it is sent; stamps the per-frame sequence. */
     void (*stamp)(uint8_t *payload, size_t length);
-    /* Whether a queued child frame is superseded by the ones behind it, so the parent
-       can go without it. Only these are shed, oldest first, and never the newest. */
+    /* True when a queued child frame is superseded by later ones. Only these are shed,
+       oldest first, never the newest. */
     bool (*sheddable)(const uint8_t *payload, size_t length);
     int shed;                         /* superseded child frames dropped while backlogged */
 
-    /* The Switch's view of the reliable stream, for stall forensics: the base of its
-       send window (its oldest unacknowledged frame) and the next local frame it
-       expects, each with when it last moved. */
+    /* Switch's reliable-stream state, for stall diagnosis: its send-window base (oldest
+       unacked frame) and the next local frame it expects, with when each last moved. */
     uint16_t peer_low, peer_ack_next;
     int64_t peer_low_moved_ms, peer_ack_moved_ms, peer_ack_seen_ms;
     bool peer_low_valid, peer_ack_valid;

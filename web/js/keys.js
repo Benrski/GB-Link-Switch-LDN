@@ -1,5 +1,5 @@
-// The four entries of a Switch's prod.keys that the bridge firmware stores. The file is
-// read in the page and nothing else from it is kept or sent anywhere.
+// prod.keys entries stored by the bridge firmware. The file is parsed locally; other entries
+// are neither kept nor sent.
 
 export const REQUIRED_KEYS = [
     'aes_kek_generation_source',

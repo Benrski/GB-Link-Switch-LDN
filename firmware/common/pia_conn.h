@@ -1,8 +1,8 @@
 #pragma once
 #include "pia_crypto.h"
 
-/* Pia connection setup and liveness: the station handshake (protocol 1), session
-   join (13), and the round-trip probes (3) whose timings feed the retransmit clock. */
+/* Pia connection setup and liveness: station handshake (protocol 1), session join (13),
+   RTT probes (3) that feed the retransmit timer. */
 
 #define PIA_OUTBOX_SLOTS 6
 #define PIA_OUTBOX_PAYLOAD 128
@@ -35,8 +35,8 @@ typedef struct
     int rtt_count;
     pia_outbox_t outbox[PIA_OUTBOX_SLOTS];
     int outbox_count;
-    /* Net protocol requests the host repeats until acknowledged, and how many copies of
-       the newest one arrived: a copy after the acknowledgement means it was not taken. */
+    /* Net protocol requests from the host (repeated until acked) and copies of the newest
+       one received. A copy after our ack means the host did not get the ack. */
     uint32_t net_requests;
     uint8_t net_last_type;
     uint32_t net_last_seq;

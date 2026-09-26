@@ -1,6 +1,5 @@
-// Stands in for the wire between the two boards: the bridge firmware is told that its
-// adapter is on the host port, and GB-Link frames are carried between that port and
-// the adapter as they arrive. Nothing here looks inside the frames.
+// Relays GB-Link frames between the bridge firmware's host adapter port and the adapter.
+// Frames are passed through unparsed.
 
 const CHUNK = 1024;
 
@@ -39,8 +38,7 @@ export class Bridge extends EventTarget {
         }
     }
 
-    // The setting does not survive the restart that ends every session, so it is made
-    // again each time the board comes back.
+    // The host-port setting is lost on the restart after every session; reapplied on reattach.
     async claim() {
         if (!this.running) return;
         if (!(await this.esp.setAdapterPort('host'))) throw new Error('The ESP32 board did not hand over its adapter port.');
@@ -50,9 +48,8 @@ export class Bridge extends EventTarget {
         this.dispatchEvent(new CustomEvent('failed', { detail: error }));
     }
 
-    // The adapter leaves the mode before the board gets its UART back: a board that is
-    // also wired to the adapter re-enters the mode over the wires as soon as it is told
-    // to, and a cancel arriving after that would undo it.
+    // Adapter leaves the mode before the board gets UART back. A board also wired to the
+    // adapter re-enters the mode over the wires right away, and a later cancel would undo it.
     async stop() {
         if (!this.running) return;
         this.running = false;

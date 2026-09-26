@@ -1,5 +1,4 @@
-// The firmware bundled with the page: firmware/manifest.json, written by
-// firmware/tools/package_web.py.
+// Bundled firmware list: firmware/manifest.json, written by firmware/tools/package_web.py.
 
 export async function loadManifest(url = 'firmware/manifest.json') {
     const response = await fetch(url, { cache: 'no-cache' });

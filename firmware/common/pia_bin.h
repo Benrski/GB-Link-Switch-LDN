@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
-/* Byte helpers mirroring the host's Bin class. Pia mixes endiannesses: the transport
-   headers are big-endian, the adapter payloads little-endian. */
+/* Byte helpers, mirror of the host's Bin class. Pia transport headers are big-endian,
+   adapter payloads little-endian. */
 
 static inline uint16_t bin_u16(const uint8_t *b) { return (uint16_t)(b[0] | b[1] << 8); }
 static inline uint32_t bin_u32(const uint8_t *b)
@@ -29,7 +29,7 @@ static inline void bin_wb32(uint8_t *b, uint32_t v)
 { b[0] = (uint8_t)(v >> 24); b[1] = (uint8_t)(v >> 16); b[2] = (uint8_t)(v >> 8); b[3] = (uint8_t)v; }
 static inline void bin_wb64(uint8_t *b, uint64_t v) { bin_wb32(b, (uint32_t)(v >> 32)); bin_wb32(b + 4, (uint32_t)v); }
 
-/* 16-bit sequence comparison: true when a is behind b in the wrapping window. */
+/* True when 16-bit sequence a is behind b, with wraparound. */
 static inline bool bin_less(uint16_t a, uint16_t b)
 { uint16_t d = (uint16_t)(b - a); return d > 0 && d < 32768; }
 

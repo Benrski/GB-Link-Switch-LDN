@@ -1,6 +1,5 @@
-// The follower's side of a FireRed / LeafGreen link trade: the blocks the two games
-// exchange, the trade menu's commands and the standby rounds around them. Port of
-// host/core/TradeEngine.cs.
+// Follower side of a FireRed/LeafGreen link trade: block exchange, trade menu commands and
+// standby rounds. Port of host/core/TradeEngine.cs.
 
 import { DataError, join, u16, w16 } from './bytes.js';
 import { Barrier, BlockReceive, BlockSend, isPlayer, playerBlock, readName, trainerCard, words } from './rfu.js';
@@ -21,9 +20,8 @@ export function linkCommand(command, cursor = 0) {
 }
 
 export class TradeEngine {
-    // party: six entries, each an 80- or 100-byte PK3 or null. A party normally needs two
-    // Pokémon, as the games ask of a player. The trade pool's starts empty and is held
-    // back until the one Pokémon it offers has arrived.
+    // party: six 80- or 100-byte PK3s or null. The game requires two Pokémon; the trade pool
+    // passes a lower minimum, starts empty and holds the party until its Pokémon arrives.
     constructor(party, offered, { minimum = 2 } = {}) {
         const count = party.filter(Boolean).length;
         if (party.length !== 6 || !(offered >= 0 && offered <= 5) || count < minimum || (count > 0 && !party[offered]))
@@ -48,16 +46,16 @@ export class TradeEngine {
         this.sentParty = 0; this.hostBlocks = 0; this.settle = 0; this.hostCursor = -1; this.animWait = -1; this.reselect = -1;
         this.playerSent = false; this.cardSupplied = false; this.seatOver = false; this.menuComplete = false; this.ribbons = false;
         this.selected = false; this.confirmed = false; this.finishSent = false; this.pendingConfirm = false;
-        this.offering = false;   // the player of this page has made an offer
+        this.offering = false;   // local player has made an offer
         this.declining = false; this.trading = false; this.cancelled = false; this.cancelAfterSend = false;
         this.cancelBarrier = false; this.returnBarrier = false; this.postCancel = false; this.saveBarriers = false; this.seam = false;
         this.postSeat = 0; this.seated = false;
-        this.seatRound = 2;          // the standby round that follows sitting down
+        this.seatRound = 2;          // standby round after sitting down
         this.awaitingVerdict = false;
         this.partyHeld = false;
         this.heldRequest = null;
-        this.mail = new Uint8Array(220);   // this side's six mail messages, 36 bytes each
-        this.hostMail = null;        // the Switch's
+        this.mail = new Uint8Array(220);   // six 36-byte mail messages
+        this.hostMail = null;        // Switch's mail
         this.hostRibbons = null;
         this.hostGame = 0;           // 0 FireRed, 1 LeafGreen
         this.firstEmits = 0; this.secondEmits = 0;
@@ -69,8 +67,8 @@ export class TradeEngine {
         this.onNotice = null;
         this.onMenuOpen = null;
         this.onDecliningChanged = null;
-        this.onHostChoice = null;       // (cursor): the verdict() that follows decides the confirmation
-        this.onTradeStart = null;       // both sides have confirmed: nothing can call the trade off now
+        this.onHostChoice = null;       // (cursor); answer with verdict()
+        this.onTradeStart = null;       // both confirmed; trade can no longer be cancelled
         this.onRoom = null;             // back in the room after a cancelled menu
     }
 
@@ -83,9 +81,8 @@ export class TradeEngine {
         this.postSeat = 20;
         this.third = { emits: 0, gap: 0 };
         this.fourth = { emits: 0, gap: 0 };
-        // Sitting down again after a cancelled menu: that menu's state goes, and the
-        // standby rounds carry on from wherever the count has got to, not from the two
-        // the first visit used.
+        // Re-seat after a cancelled menu: reset menu state; standby rounds continue from the
+        // current barrier count instead of 2.
         if (this.postCancel) {
             this.seatRound = this.barrier.count;
             this.postCancel = this.done = false;
@@ -101,19 +98,17 @@ export class TradeEngine {
         }
     }
 
-    // The players are back in the room after a cancelled menu, where sitting down again
-    // starts the next one.
+    // Back in the room after a cancelled menu. Sitting down again opens the next menu.
     returnToRoom() {
         this.done = this.postCancel = true;
         this.hostReady = this.seated = this.seatOver = false;
         this.onRoom?.();
     }
 
-    // The Pokémon the Switch has put up, as it trades it.
+    // Switch's Pokémon at cursor, 100-byte wire format.
     hostMon(cursor) { return this.hostParty.slice(cursor * 100, (cursor + 1) * 100); }
 
-    // A different Pokémon for a slot, with the mail it holds if any, shown to the Switch
-    // the next time the parties are exchanged.
+    // Replaces a slot and its mail; takes effect at the next party exchange.
     setPartyMon(slot, bytes, mail = null) {
         const written = Boolean(mail) && mail.some((b) => b !== 0);
         this.party[slot] = toWire(bytes, written ? slot : 0xff);
@@ -121,13 +116,12 @@ export class TradeEngine {
         if (written) this.mail.set(mail.subarray(0, MAIL_SIZE), slot * MAIL_SIZE);
     }
 
-    // Holds the party back while a Pokémon for it is on its way. The Switch waits for
-    // the block, and the board repeats the request, so a short hold costs nothing.
+    // Delays party blocks while a Pokémon is incoming. Safe: the Switch waits and the board
+    // repeats the request.
     holdParty() { this.partyHeld = true; }
     releaseParty() { this.partyHeld = false; }
 
-    // Whether to go through with the trade the Switch has chosen, once onHostChoice has
-    // had its say.
+    // Accept or refuse the Switch's choice after onHostChoice.
     verdict(accept) {
         if (!this.awaitingVerdict) return;
         this.awaitingVerdict = false;
@@ -144,11 +138,9 @@ export class TradeEngine {
         this.onDecliningChanged?.(value);
     }
 
-    // The game leaves the trade menu only when both sides send Cancel, and the leader
-    // transmits its Cancel but never its Ready. So this side sends Ready unprompted,
-    // switches to Cancel once the leader has sent one, and back to Ready on
-    // PartnerCancel. The leader keeps only the follower's latest Ready or Cancel until
-    // its own player has answered, so a later block replaces an earlier one.
+    // The menu closes only when both sides send Cancel. The leader transmits Cancel but
+    // never Ready, and keeps only the follower's latest Ready/Cancel until its player
+    // answers, so a later block replaces an earlier one.
     decline() {
         if (this.declining || this.done || this.state === 4) return;
         this.setDeclining(true, this.state === 3 ? 'Cancelling the trade: answer the question on the Switch, then choose CANCEL there'
@@ -178,7 +170,7 @@ export class TradeEngine {
         this.sender = new BlockSend(data);
     }
 
-    // One frame's five command slots from the host: its own, then each player's echo.
+    // Five command slots per host frame: host's own, then each player's echo.
     feed(slots) {
         const completed = [], requests = [];
         let barrierSeen = false;
@@ -221,7 +213,7 @@ export class TradeEngine {
         return block < 3 ? join(this.party[block * 2], this.party[block * 2 + 1]) : new Uint8Array(200);
     }
 
-    // A completed block from the host, told apart by its fragment count.
+    // Completed host block, identified by fragment count.
     hostBlock(count, data) {
         if (count === 2) { this.onCommand(u16(data), u16(data, 2)); return; }
         if (count === 4) { this.ribbons = true; this.hostRibbons = data.slice(0, 11); return; }
@@ -250,7 +242,7 @@ export class TradeEngine {
             case LINK.SET_MONS:
                 if (cursor < 0 || cursor > 5) throw new DataError('Invalid opponent cursor');
                 this.hostCursor = cursor;
-                // A decline that raced the leader's SetMons answers the confirmation with ReadyCancel.
+                // Decline raced SetMons: answer the confirmation with ReadyCancel.
                 if (this.state === 1 || this.state === 2) {
                     this.state = 3;
                     if (!this.confirmed) {
@@ -281,8 +273,7 @@ export class TradeEngine {
                 break;
             case LINK.PLAYER_CANCEL:
             case LINK.PARTNER_CANCEL:
-                // The Switch picked a Pokémon against this side's cancel. Both answers are
-                // spent, and the next one is the player's to give again.
+                // Both answers are spent; the player must choose again.
                 if (command === LINK.PARTNER_CANCEL) { this.offering = false; this.setDeclining(false, 'The Switch chose a Pokémon while this side was cancelling, so that trade was called off. Choose again.'); }
                 this.state = 1; this.selected = false; this.reselect = 60; this.pending = null; this.cancelAfterSend = false;
                 this.confirmed = false; this.cancelled = false; this.hostCursor = -1;
@@ -293,7 +284,7 @@ export class TradeEngine {
     commit() {
         if (this.hostCursor < 0 || this.hostBlocks !== 3) throw new DataError('Trade confirmed without a complete opponent selection');
         const received = this.hostParty.slice(this.hostCursor * 100, (this.hostCursor + 1) * 100);
-        // The traded slot is the cursor of the last Ready sent, which can differ from the one on offer.
+        // Traded slot = cursor of the last Ready sent; may differ from this.offered.
         const slot = this.sentCursor;
         this.received = parse(received).data.slice();
         this.party[slot] = received;
@@ -324,7 +315,7 @@ export class TradeEngine {
         if (this.sender?.state === 2) this.tick();
     }
 
-    // The command to send this frame, as seven words.
+    // Command for this frame, as seven words.
     tick() {
         if (this.sender) {
             const result = this.sender.tick(this.receivers[1]);
@@ -344,10 +335,9 @@ export class TradeEngine {
             this.returnToRoom();
         }
         if (this.postCancel && this.barrier.active) return this.barrier.emit() ?? words(0);
-        // The Switch answers the rounds around its save once its game gets there, and a
-        // Pokémon that evolves on arrival comes first, with a move to replace taking as
-        // long as its player likes. The leader never starts a round, so this side keeps
-        // asking, as a game does, until the Switch's party request ends them.
+        // Save rounds after a trade. The leader never starts one, and an evolution (with
+        // move learning) can delay its answer indefinitely, so keep initiating until the
+        // Switch requests the party.
         if (this.saveBarriers) {
             if (!this.barrier.active) this.barrier.initiate();
             return this.barrier.emit() ?? words(0);
@@ -359,9 +349,8 @@ export class TradeEngine {
             this.menuComplete = true;
             this.onMenuOpen?.();
         }
-        // Nothing goes out until this side has something to say. The leader acts only
-        // once both players have answered, so staying quiet leaves the player on the
-        // Switch free to leave the menu with one cancel.
+        // Send nothing until offering or declining. The leader acts only after both players
+        // answer, so silence lets the Switch player leave the menu with one cancel.
         if (!this.selected && this.menuComplete && this.state === 1 && this.reselect < 0 && this.pending === null &&
             (this.offering || this.declining)) {
             this.selected = true;
@@ -391,7 +380,7 @@ export class TradeEngine {
     }
 }
 
-// Six standby frames, then a pause of a second before the next six.
+// Six standby frames, then a 60-frame pause.
 function sustain(count, pace) {
     if (pace.emits < 6) { pace.emits++; pace.gap = 0; return words(0x6600, count); }
     if (++pace.gap >= 60) pace.emits = pace.gap = 0;

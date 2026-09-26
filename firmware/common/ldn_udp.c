@@ -27,6 +27,7 @@ static uint8_t s_host[6];
 static ip4_addr_t s_ip, s_peers[PEERS_MAX];
 static int64_t s_heartbeat;
 static unsigned s_tx, s_rx, s_rejected;
+static bool s_host_mode;
 
 typedef struct {
     ip4_addr_t ip;
@@ -62,6 +63,7 @@ void ldn_udp_init(esp_netif_t *netif, const uint8_t host[6])
 {
     s_netif = netif;
     memcpy(s_host, host, 6);
+    s_host_mode = false;
 }
 
 void ldn_udp_stop(void)
@@ -94,6 +96,7 @@ static int start(const char *ours, const char *host)
     if (!local_address(ours, &ip) || !local_address(host, &peer) ||
         ip.addr == peer.addr || ((ntohl(ip.addr) ^ ntohl(peer.addr)) >> 8)) return ESP_ERR_INVALID_ARG;
     ldn_udp_stop();
+    s_host_mode = false;
     esp_netif_ip_info_t info = {0};
     info.ip.addr = ip.addr;
     info.netmask.addr = htonl(0xffffff00);
@@ -116,6 +119,49 @@ static int start(const char *ours, const char *host)
 failed:
     ldn_udp_stop();
     return ESP_FAIL;
+}
+
+int ldn_udp_host_start(esp_netif_t *netif, const char *our_ip)
+{
+    ip4_addr_t ip;
+    if (!local_address(our_ip, &ip)) return ESP_ERR_INVALID_ARG;
+    s_netif = netif;
+    ldn_udp_stop();
+    s_host_mode = true;
+    esp_netif_ip_info_t info = {0};
+    info.ip.addr = ip.addr;
+    info.netmask.addr = htonl(0xffffff00);
+    int result = esp_netif_set_ip_info(s_netif, &info);
+    if (result != ESP_OK) return result;
+    s_ip = ip;
+    s_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (s_socket < 0) goto failed;
+    int yes = 1;
+    struct sockaddr_in address = {.sin_family = AF_INET, .sin_port = htons(PIA_PORT),
+                                 .sin_addr.s_addr = INADDR_ANY};
+    if (setsockopt(s_socket, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(yes)) ||
+        bind(s_socket, (struct sockaddr *)&address, sizeof(address)) ||
+        fcntl(s_socket, F_SETFL, O_NONBLOCK)) goto failed;
+    s_tx = s_rx = s_rejected = 0;
+    s_heartbeat = esp_timer_get_time();
+    return ESP_OK;
+failed:
+    ldn_udp_stop();
+    return ESP_FAIL;
+}
+
+int ldn_udp_add_peer(const char *ip_text, const uint8_t mac[6])
+{
+    ip4_addr_t ip;
+    if (!local_address(ip_text, &ip) || !same_subnet(ip) || ip.addr == s_ip.addr) return ESP_ERR_INVALID_ARG;
+    return neighbor(ip, mac);
+}
+
+int ldn_udp_remove_peer(const char *ip_text)
+{
+    ip4_addr_t ip;
+    if (!local_address(ip_text, &ip)) return ESP_ERR_INVALID_ARG;
+    return neighbor(ip, NULL);
 }
 
 static int from_hex(char c)
@@ -216,7 +262,8 @@ bool ldn_udp_send(const char *ip, const uint8_t *data, size_t length)
 void ldn_udp_poll(bool connected)
 {
     if (s_socket < 0) return;
-    if (!connected || esp_timer_get_time() - s_heartbeat > 10000000) {
+    /* Host mode has no station link, so no watchdog. */
+    if (!s_host_mode && (!connected || esp_timer_get_time() - s_heartbeat > 10000000)) {
         ldn_udp_stop();
         esp_wifi_disconnect();
         printf("LDN_NET_LOST\n");
@@ -225,7 +272,7 @@ void ldn_udp_poll(bool connected)
     static uint8_t bytes[PAYLOAD_MAX + 1];
     static char hex[PAYLOAD_MAX * 2 + 1];
     static const char digits[] = "0123456789abcdef";
-    /* Bound USB TX blocking so commands and the heartbeat are serviced between bursts. */
+    /* At most 2 datagrams per poll, so commands and the heartbeat run between bursts. */
     for (int count = 0; count < 2; ++count) {
         struct sockaddr_in source;
         socklen_t size = sizeof(source);

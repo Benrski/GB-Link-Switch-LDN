@@ -20,7 +20,7 @@ int bridge_transport_read(void *buffer, size_t length)
 
 void bridge_transport_write(const void *buffer, size_t length)
 {
-    /* Bound blocking if the host closes the port; a following COBS delimiter resynchronizes RX. */
+    /* Timeout in case the host closed the port; the next COBS delimiter resyncs RX. */
     int written = usb_serial_jtag_write_bytes(buffer, length, pdMS_TO_TICKS(100));
     if (written != (int)length) ++dropped;
 }

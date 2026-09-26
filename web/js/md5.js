@@ -1,5 +1,4 @@
-// MD5 of a byte array, as lower-case hex. The ESP flasher stub reports the MD5 of what
-// it wrote, and the Web Crypto API does not offer this digest.
+// MD5 as lower-case hex, to verify the ESP flasher stub's write digest. Web Crypto has no MD5.
 
 const SHIFTS = [
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,

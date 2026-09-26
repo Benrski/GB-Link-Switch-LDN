@@ -1,6 +1,6 @@
-// Generation 3 Pokémon data (PK3): the 80-byte stored and 100-byte party forms, as files
-// hold them (decrypted, blocks in a fixed order) and as the games trade them (encrypted,
-// blocks ordered by personality). Follows what the reference host gets from PKHeX.Core.
+// Gen 3 PK3 data: 80-byte stored and 100-byte party forms. Files hold them decrypted with
+// blocks in fixed order; the link carries them encrypted with blocks ordered by PID.
+// Matches the reference host's PKHeX.Core behaviour.
 
 import { DataError, u16, u32, w16, w32 } from './bytes.js';
 import { CHARACTERS, CHARACTERS_JAPANESE, EXPERIENCE, NATIONAL, SPECIES, SPECIES_NAMES } from './pk3-data.js';
@@ -10,8 +10,7 @@ export const PARTY_SIZE = 100;
 const UNOWN = 201;
 const JAPANESE = 1;
 
-// Order of the growth, attacks, effort and miscellaneous blocks (0 to 3) in traded data,
-// by personality value modulo 24.
+// Growth/attacks/EVs/misc block order (0-3) in traded data, indexed by PID % 24.
 const BLOCK_ORDER = [
     [0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1],
     [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0],
@@ -59,7 +58,7 @@ function text(bytes, language) {
 }
 
 export class Pk3 {
-    // Takes either form, traded or not; data is always the 100-byte party form, decrypted.
+    // Accepts either size, encrypted or not; data is always the decrypted 100-byte form.
     constructor(bytes) {
         if (bytes.length !== STORED_SIZE && bytes.length !== PARTY_SIZE) throw new DataError('A PK3 must be 80 or 100 bytes.');
         let data = new Uint8Array(PARTY_SIZE);
@@ -78,7 +77,7 @@ export class Pk3 {
     get species() { return NATIONAL[this.speciesInternal] ?? 0; }
     get speciesName() { return SPECIES_NAMES[this.species] ?? ''; }
     get heldItem() { return u16(this.data, 0x22); }
-    // Which of its trainer's six mail messages a Pokémon in a party carries.
+    // Index into the party's six mail messages.
     get mailIndex() { return this.data.length > 0x55 ? this.data[0x55] : 0xff; }
     get hasMail() { return this.heldItem >= 121 && this.heldItem <= 132 && this.mailIndex < 6; }
     get experience() { return u32(this.data, 0x24); }
@@ -101,7 +100,7 @@ export class Pk3 {
         return (this.pid & 0xff) < ratio ? 1 : 0;
     }
 
-    // Unown's letter, 0 to 27; 0 for everything else.
+    // Unown letter 0-27; 0 for other species.
     get form() {
         if (this.species !== UNOWN) return 0;
         const pid = this.pid;
@@ -116,7 +115,7 @@ export class Pk3 {
         return level;
     }
 
-    // Level and stats of the party form, worked out from the stored data.
+    // Recomputes party level and stats from stored data.
     resetPartyStats() {
         const base = SPECIES[this.species];
         const level = this.level, ivs = this.ivs, evs = this.evs;
@@ -140,7 +139,7 @@ export class Pk3 {
 
     refreshChecksum() { w16(this.data, 0x1c, checksum(this.data)); }
 
-    // The party form as a file holds it.
+    // Decrypted 100-byte form with a fresh checksum.
     export() {
         const copy = new Pk3(this.data);
         copy.refreshChecksum();
@@ -148,7 +147,7 @@ export class Pk3 {
     }
 }
 
-// A Pokémon from a file or a saved party. Throws DataError unless it can be traded.
+// Parses a tradeable Pokémon; throws DataError otherwise.
 export function parse(bytes) {
     const pk = new Pk3(bytes);
     if (!pk.checksumValid || pk.species === 0 || pk.species > 386 || pk.isBadEgg) throw new DataError('PK3 checksum failed, or this is not a valid Generation 3 Pokémon.');
@@ -156,8 +155,8 @@ export function parse(bytes) {
     return pk;
 }
 
-// The 100 bytes a game puts on the link for this Pokémon. mailIndex says which of the
-// six messages sent with the party is its own; without one it carries no mail.
+// Encrypted 100-byte link form. mailIndex selects one of the party's six mail messages;
+// 0xff for none.
 export function toWire(bytes, mailIndex = 0xff) {
     const pk = parse(bytes);
     pk.data[0x55] = mailIndex;

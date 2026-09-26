@@ -11,7 +11,7 @@ public sealed class JoinedRoom(LdnNetwork network, LdnKeys derived, byte[] ourMa
     public LdnMember Ours { get; } = ours;
     public LdnMember Host { get; } = host;
     public Dictionary<string, byte[]> Peers { get; private set; } = peers;
-    // A fresh advertisement from the same host: verify it, then update neighbors. False when it is not our room.
+    // Verifies a new advertisement from the same host and updates neighbors. False if it is another room.
     public bool Refresh(SerialDevice device, LdnNetwork room)
     {
         if (!room.Host.AsSpan().SequenceEqual(Network.Host)) return false;
@@ -23,7 +23,7 @@ public sealed class JoinedRoom(LdnNetwork network, LdnKeys derived, byte[] ourMa
     }
 }
 
-// Finding and joining a FireRed Leader room over the serial bridge device: scan, associate, LDN authenticate, membership, UDP setup.
+// Joins a FireRed leader room via the serial bridge device: scan, associate, LDN auth, membership, UDP setup.
 public static class LdnJoiner
 {
     public static string Text(SerialFrame frame) => Encoding.UTF8.GetString(frame.Payload);

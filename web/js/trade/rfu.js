@@ -1,6 +1,5 @@
-// The GBA wireless adapter's link layer as the games use it, and the frames that carry
-// it over Pia. Port of host/core/Rfu.cs. A command is seven 16-bit words; words[0] holds
-// the operation in its high byte.
+// GBA wireless adapter link layer as used by the games, plus its Pia framing.
+// Port of host/core/Rfu.cs. A command is seven 16-bit words; the op is the high byte of word 0.
 
 import { DataError, ascii, fromHex, pad, u16, w16, w32 } from './bytes.js';
 import { CHARACTERS } from './pk3-data.js';
@@ -21,7 +20,7 @@ export function ni(state, n, phase, ack, payload) {
     return b;
 }
 
-// The name exchange a joining game runs before data frames start.
+// Name exchange (NI) frames a joining game sends before data frames.
 export function gameData() {
     const b = new Uint8Array(26);
     w16(b, 0, 2);
@@ -35,7 +34,7 @@ export function gameData() {
     ];
 }
 
-// Text in the games' character set; only what a trainer name needs.
+// Encodes A-Z, a-z, 0-9 in the game charset, 0xFF-terminated.
 export function gameName(name, size) {
     const b = new Uint8Array(size);
     let n = 0;
@@ -87,7 +86,7 @@ export function isPlayer(b) {
     return true;
 }
 
-// "WT": one adapter payload for the host, stamped with this side's frame counter.
+// "WT": adapter payload for the host, stamped with this side's frame counter.
 export function wrap(slot, time) {
     const b = new Uint8Array(12 + ((slot.length + 3) & ~3));
     b[0] = 0x57; b[1] = 0x54;
@@ -98,7 +97,7 @@ export function wrap(slot, time) {
     return b;
 }
 
-// "WK": acknowledges the host's frame stamped `time`.
+// "WK": acknowledges the host frame stamped `time`.
 export function ack(sequence, middle, time) {
     const b = new Uint8Array(16);
     b[0] = 0x57; b[1] = 0x4b; b[2] = 12;
@@ -108,7 +107,7 @@ export function ack(sequence, middle, time) {
     return b;
 }
 
-// A block arriving as 12-byte fragments.
+// Receives a block as 12-byte fragments.
 export class BlockReceive {
     constructor() {
         this.count = 0;
@@ -130,7 +129,7 @@ export class BlockReceive {
         this.done = false;
     }
 
-    // True when this fragment completed the block.
+    // True if this fragment completed the block.
     add(index, piece) {
         if (!this.receiving || index < 0 || index >= this.count) return false;
         const previous = this.done;
@@ -144,7 +143,7 @@ export class BlockReceive {
 
 const allFragments = (count) => (count === 32 ? 0xffffffff : ((1 << count) - 1) >>> 0);
 
-// A block going out, paced by the peer's echo of what it has received.
+// Sends a block, paced by the peer's echo of received fragments.
 export class BlockSend {
     constructor(bytes) {
         this.bytes = bytes;
@@ -180,7 +179,7 @@ export class BlockSend {
     }
 }
 
-// The standby rounds ("link barriers") both games run between steps, and the close.
+// Standby rounds ("link barriers", 0x6600) between steps, and the close (0x5f00).
 export class Barrier {
     constructor() {
         this.mode = 0;

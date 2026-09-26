@@ -1,7 +1,6 @@
-// Installs the bridge firmware on an ESP32 over WebSerial with esptool-js. The chip is
-// identified first and the matching images are taken from the manifest, so the same
-// button serves every supported board. The three images are written separately, which
-// leaves the stored keys (in the NVS partition between them) in place across updates.
+// Flashes the bridge firmware to an ESP32 over WebSerial with esptool-js. Images are picked
+// from the manifest by detected chip. The three images are written separately so the NVS
+// partition between them (stored keys) survives updates.
 
 import { ESPLoader, Transport } from '../vendor/esptool-js/bundle.js';
 import { md5 } from './md5.js';
@@ -9,19 +8,16 @@ import { fetchBytes } from './manifest.js';
 
 const ESPRESSIF_VENDOR_ID = 0x303a;
 
-// port: a closed SerialPort. Resolves with { chip, version } once the board has been
-// reset into the new firmware; the port is closed again either way.
+// port: a closed SerialPort. Resolves with { chip, version } after reset into the new
+// firmware. The port is closed on return.
 export async function flashBridge(port, manifest, options = {}) {
-    // The rate means nothing on the chip's own USB port, and asking for a change there
-    // only closes and reopens it. A UART bridge is worth speeding up, but not every
-    // board keeps up with 460800: the chip agrees to the change and the next packet
-    // arrives corrupted. Such a board is written at the ROM's rate instead.
+    // Baud rate is ignored on native USB, and changing it there closes and reopens the port.
+    // Some UART bridges accept 460800 and then corrupt the next packet; those retry at 115200.
     const native = safeInfo(port).usbVendorId === ESPRESSIF_VENDOR_ID;
     return withSlowerRetry(native ? [115200] : [460800, 115200], (baudrate, seen) => flashAt(port, manifest, baudrate, seen, options), options);
 }
 
-// Tries the rates in turn. Only a failure after the chip had switched to a faster rate
-// is a speed problem, and only then is the next rate tried.
+// Tries each rate in turn. Falls back only if the failure came after a switch to a faster rate.
 export async function withSlowerRetry(rates, attempt, { onStatus = () => {}, onLog = () => {} } = {}) {
     for (let i = 0; i < rates.length; i++) {
         const seen = { faster: false };
@@ -84,10 +80,9 @@ async function flashAt(port, manifest, baudrate, seen, { onStatus = () => {}, on
     }
 }
 
-// RTS asserted with DTR released pulls the chip's reset line, through the auto-reset
-// circuit of a dev board or its emulation in the USB Serial/JTAG peripheral. The
-// loader's own hard reset (esptool-js 0.6.1) only ever releases RTS, which leaves the
-// chip sitting in the flasher stub.
+// RTS asserted with DTR released pulls EN via the dev-board auto-reset circuit (or its USB
+// Serial/JTAG emulation). esptool-js 0.6.1's hard reset only releases RTS and leaves the chip
+// in the flasher stub.
 async function hardReset(transport) {
     await transport.setDTR(false);
     await transport.setRTS(true);

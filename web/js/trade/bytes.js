@@ -1,5 +1,4 @@
-// Byte helpers shared by the trade modules. Multi-byte fields are little-endian unless
-// the name says big (b16, wb32, ...); 64-bit values are BigInt.
+// Byte helpers. Little-endian unless the name starts with b/wb (big-endian); 64-bit values are BigInt.
 
 export function u16(b, o = 0) { return b[o] | (b[o + 1] << 8); }
 export function u32(b, o = 0) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
@@ -59,7 +58,7 @@ export function ipBytes(text) {
     return Uint8Array.from(parts, Number);
 }
 
-// a is before b in 16-bit sequence space.
+// True if a precedes b in 16-bit sequence space.
 export function less(a, b) {
     const d = (b - a) & 0xffff;
     return d > 0 && d < 0x8000;
@@ -73,7 +72,7 @@ export function randomBytes(length) {
     return out;
 }
 
-// Malformed or unauthenticated data from the wire, as opposed to a lost connection.
+// Malformed or unauthenticated wire data (not a lost connection).
 export class DataError extends Error {
     constructor(message) { super(message); this.name = 'DataError'; }
 }

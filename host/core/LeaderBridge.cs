@@ -3,10 +3,10 @@ using System.Security.Cryptography;
 
 namespace Frlg.Trade.Core;
 
-// Minimal FireRed Leader for a GBA joining through a GB-Link adapter in wireless mode: advertises a
-// trade-group beacon, accepts the connect, plays the leader side of the librfu name exchange (per-chunk
-// LLSF acks), then admits the child with the JOIN_GROUP_OK status block, logging every frame and the
-// adapter's telemetry. Frame formats follow pokefirered librfu_rfu.c and today's Switch captures.
+// Minimal FireRed leader for a GBA joining through a GB-Link adapter in wireless mode. Advertises a
+// trade-group beacon, accepts the connect, runs the leader side of the librfu name exchange (per-chunk
+// LLSF acks), then admits the child with JOIN_GROUP_OK. Logs every frame and the adapter telemetry.
+// Frame formats follow pokefirered librfu_rfu.c and Switch captures.
 public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
 {
     public ushort Devid { get; } = (ushort)RandomNumberGenerator.GetInt32(1, 0xFFFF);
@@ -18,7 +18,7 @@ public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
     public int ClientSends { get; private set; }
     private byte[]? ack; private int ackRepeats; private double acceptAt = double.PositiveInfinity, nextFrame = double.PositiveInfinity;
     private readonly List<byte[]> childName = [];
-    // The parent NI send of the 1-byte join status: each step repeats every frame until the child acks it.
+    // Parent NI send of the 1-byte join status. Each step repeats until the child acks it.
     private static readonly (byte[] Frame, int State, int N, int Phase)[] JoinStatus =
     [
         (ParentFrame(1, 1, 0, [0x00, 0x05, 0x00, 0x01, 0x00]), 1, 1, 0),   // NI_START control: dataType 0, payloadSize 5, dataSize 1 (first 5 bytes)
@@ -33,7 +33,8 @@ public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
     {
         var b = new byte[24];
         Bin.W16(b, 0, 0x0002);                         // RFU_SERIAL_GAME
-        // Compatibility: language English (2), version FireRed (4), and the story-progress flags canLinkNationally,
+        // Compatibility: language English (2), version FireRed (4),
+        // bits 7-9 canLinkNationally/hasNationalDex/gameClear.
         Bin.W16(b, 2, 2 | (1 << 7) | (1 << 8) | (1 << 9) | (4 << 10));
         Bin.W16(b, 4, trainerId);                      // playerTrainerId; partnerInfo[4] and tradeSpecies/tradeType stay zero
         b[12] = (byte)((activity & 0x7F) | (started ? 0x80 : 0));
@@ -48,7 +49,7 @@ public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
         uint h = 0x040000u | (uint)(state << 14) | (ack ? 1u << 13 : 0) | (uint)(n << 11) | (uint)(phase << 9) | (uint)payload.Length;
         return [(byte)h, (byte)(h >> 8), (byte)(h >> 16), .. payload];
     }
-    // The leader's acknowledgement of a child NI frame: same state/n/phase, ack bit set, no payload.
+    // Ack of a child NI frame: same state/n/phase, ack bit set, no payload.
     public static byte[] ParentAck(ushort h) => ParentFrame((h >> 10) & 15, (h >> 7) & 3, (h >> 5) & 3, [], true);
     public static string DescribeNi(ReadOnlySpan<byte> d)
     {
@@ -103,7 +104,7 @@ public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
             while (device.TryDequeueStatus(out var status)) log($"status {GbLinkDevice.StatusName(status)}");
         }
     }
-    // Mode entry samples the cable: keep retrying until the GBC cable (and a GBA) is on the link port.
+    // Mode entry checks the cable; retry until the GBC cable and a GBA are on the link port.
     public static void EnterWirelessMode(GbLinkDevice device, Action<string> log, CancellationToken cancel)
     {
         for (int attempt = 0; ; attempt++)
@@ -145,7 +146,7 @@ public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
                 break;
             case Rfu1.ClientSend:
                 var data = frame.Data; ClientSends++;
-                if (data.All(b => b == 0)) break;   // idle frames only tick the pump; counted in the summary
+                if (data.All(b => b == 0)) break;   // idle frame; counted in the summary
                 log($"{now,7:F3} GBA -> {Convert.ToHexString(data)}");
                 foreach (var (h, payload) in ChildFrames(data)) ChildFrame(h, payload, now);
                 break;
@@ -164,7 +165,7 @@ public sealed class LeaderBridge(GbLinkDevice device, Action<string> log)
                 log($"{now,7:F3}   child acked join step {joinStep + 1}/{JoinStatus.Length} ({DescribeNi([(byte)h, (byte)(h >> 8)])})");
                 if (++joinStep == JoinStatus.Length)
                 {
-                    Joined = true; ack = ParentFrame(0, 1, 0, []); ackRepeats = 2;   // the leader's idle NI frame after admission (capture: 00 08 04)
+                    Joined = true; ack = ParentFrame(0, 1, 0, []); ackRepeats = 2;   // leader idle NI frame after admission (capture: 00 08 04)
                     log($"{now,7:F3} JOIN_GROUP_OK accepted: the GBA is joined to the group");
                 }
             }

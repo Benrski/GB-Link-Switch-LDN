@@ -1,11 +1,8 @@
 /* Seeed XIAO ESP32C6 board setup.
  *
- * The module's antenna path runs through an RF switch that is held off until
- * GPIO3 is driven low, and GPIO14 then selects which antenna it connects: low
- * for the onboard ceramic one, high for a U.FL external. Left alone, both pins
- * float and the radio transmits into a disconnected switch -- it associates
- * with strong nearby APs and nothing else, which looks like a range problem
- * rather than a configuration one. Set before esp_wifi_init.
+ * The antenna RF switch is off until GPIO3 is driven low. GPIO14 selects the
+ * antenna: low = onboard ceramic, high = U.FL external. With both pins floating
+ * the radio only reaches strong nearby APs. Must run before esp_wifi_init.
  */
 #include "driver/gpio.h"
 #include "ldn_session.h"

@@ -9,7 +9,7 @@
 #include "ldn_wire.h"
 #include "ldn_control.h"
 
-#define MAX_FRAME 4096
+#define MAX_FRAME 3200   /* the longest line is an advertisement dump, about 3.1 KB */
 static bool active;
 static uint32_t session, request;
 static uint8_t input[MAX_FRAME + 32];
@@ -58,8 +58,8 @@ void ldn_wire_set_rfu_handler(void (*handler)(const uint8_t *, size_t)) { rfu_ha
 
 void ldn_wire_send_rfu(const uint8_t *frame, size_t length)
 {
-    /* Unsolicited, like a datagram: not tied to a request. Call only from the task
-       that runs the rest of the wire layer; send_frame uses static buffers. */
+    /* Unsolicited frame, request id 0. Call only from the wire-layer task
+       (send_frame uses static buffers). */
     if (!active) return;
     const uint32_t saved = request;
     request = 0;
@@ -72,7 +72,7 @@ void ldn_wire_session(uint32_t value) { session = value; }
 void ldn_wire_enable(void)
 {
     active = true;
-    /* A newly opened host starts at session zero and negotiates a fresh BEGIN. */
+    /* New host connection: session 0 until LDN_BEGIN. */
     session = 0;
     esp_log_level_set("*", ESP_LOG_NONE);
     const uint8_t zero = 0;

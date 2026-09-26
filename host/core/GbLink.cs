@@ -2,9 +2,9 @@ using System.IO.Ports;
 
 namespace Frlg.Trade.Core;
 
-// GB-Link adapter over its CDC serial channel: "GB" | channel | length (LE16) | payload, with channels
-// 0 = command, 1 = data, 2 = status. In wireless mode (0x05) the data channel carries the RFU1 frame
-// stream in 64-byte chunks; shorter data frames are the firmware's telemetry.
+// GB-Link CDC serial framing: "GB" | channel | length (LE16) | payload.
+// Channels: 0 command, 1 data, 2 status. In wireless mode (0x05) the data channel carries the RFU1
+// stream in 64-byte chunks; shorter data frames are firmware telemetry.
 public sealed class GbLinkDevice : IDisposable
 {
     public const byte ChannelCommand = 0, ChannelData = 1, ChannelStatus = 2;
@@ -23,12 +23,12 @@ public sealed class GbLinkDevice : IDisposable
         port.Open(); port.DiscardInBuffer();
         reader = new(ReadLoop) { IsBackground = true, Name = "gblink-reader" }; reader.Start();
     }
-    // Tunnelled: the adapter is wired to the LDN device rather than this PC, so the same frames
-    // ride that link instead of a port of our own. Frames arrive by Feed, not a reader thread.
+    // Tunnelled: the adapter is attached to the LDN device, not this PC. Frames go out through
+    // `write` and arrive via Feed instead of a reader thread.
     public GbLinkDevice(Action<byte[]> write) => tunnel = write;
     private int state, channel, length, position;
     private readonly byte[] payload = new byte[65536];
-    // Frame reassembly, driven either by our own reader thread or by whoever owns the tunnel.
+    // Frame reassembly; called by the reader thread or the tunnel owner.
     public void Feed(ReadOnlySpan<byte> bytes)
     {
         foreach (byte b in bytes)
@@ -57,8 +57,7 @@ public sealed class GbLinkDevice : IDisposable
         var chunk = new byte[4096];
         while (running)
         {
-            // A port being torn down or re-enumerated can report a negative count; treat anything
-            // non-positive as "nothing to read" rather than handing it to Read.
+            // A port being closed or re-enumerated can report a negative count.
             int available, count;
             try { available = port!.BytesToRead; } catch (Exception) { break; }
             if (available <= 0) { Thread.Sleep(1); continue; }
@@ -85,13 +84,12 @@ public sealed class GbLinkDevice : IDisposable
         lock (writeLock) { if (tunnel != null) tunnel(frame); else port!.Write(frame, 0, frame.Length); }
     }
     public void Command(params byte[] bytes) => Send(ChannelCommand, bytes);
-    // The firmware's data receive buffer is one 64-byte transport chunk; its RFU1 parser reassembles across chunks.
+    // Firmware data RX buffer is one 64-byte chunk; its RFU1 parser reassembles across chunks.
     public void SendData(ReadOnlySpan<byte> bytes)
     { for (int o = 0; o < bytes.Length; o += 64) Send(ChannelData, bytes.Slice(o, Math.Min(64, bytes.Length - o))); }
     public bool TryDequeueData(out byte[] frame) { lock (data) return data.TryDequeue(out frame!); }
     public bool TryDequeueStatus(out ushort status) { lock (data) return statuses.TryDequeue(out status); }
-    // Set when tunnelled: frames only arrive while the link's owner is pumped, so any wait here
-    // has to drive it rather than sleeping through the reply.
+    // Tunnelled only: frames arrive only while the owner is pumped, so waits must call this.
     public Action? Pump { get; set; }
     public byte[]? FirmwareInfo(double timeout = 1.5)
     {

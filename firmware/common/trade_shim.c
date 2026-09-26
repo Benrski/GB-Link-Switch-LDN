@@ -6,8 +6,7 @@
 #ifdef ESP_PLATFORM
 #include "esp_attr.h"
 #include "ldn_wire.h"
-/* Log lines go through the console protocol, which frames them in binary mode. The
-   host-side test builds this file alone and keeps plain printf. */
+/* Console protocol frames log lines in binary mode. The host test keeps plain printf. */
 #define printf ldn_wire_printf
 #else
 #define RTC_NOINIT_ATTR
@@ -19,33 +18,39 @@
 #define RFUCMD_SEND_BLOCK_REQ 0xa100
 #define RFUCMD_SEND_HELD_KEYS 0xbe00
 #define LINK_KEY_CODE_EMPTY 0x11
-#define LINK_KEY_CODE_DPAD_RIGHT 0x15   /* 0x12-0x15: the four directions */
+#define LINK_KEY_CODE_DPAD_RIGHT 0x15   /* 0x12-0x15: directions */
 #define LINKCMD_CONFIRM_FINISH_TRADE 0xdcba
 
-/* Post-trade standby rounds a retail FireRed/LeafGreen cartridge runs: trade_scene.c
-   CB2_SaveAndEndTrade cases 1, 41, 5 and 8, then trade.c CB2_CreateTradeMenu case 4.
-   The parent answers each; after the fifth answer it is parked in its sixth barrier. */
+/* Post-trade standby rounds of a retail cartridge: trade_scene.c CB2_SaveAndEndTrade
+   cases 1, 41, 5, 8, then trade.c CB2_CreateTradeMenu case 4. After the fifth answer
+   the Switch parent waits in its sixth barrier. */
 #define TRADE_SHIM_CHILD_ROUNDS 5
-/* Quiet time after that fifth answer before the extra round goes in: long enough for the
-   parent to have processed its own answer (a frame or two) and for a parent that did not
-   need a sixth round to have sent its party request instead (~12 frames). */
+/* Quiet time after the fifth answer before injecting. Covers the parent processing its
+   answer (1-2 frames) and a five-round parent sending its party request (~12 frames). */
 #define TRADE_SHIM_SETTLE_MS 750
-/* For a cartridge with a different round count: any post-trade answer followed by this
-   much silence on both sides also counts as the deadlock. Longer than the cartridge's
-   save, which is the longest legitimate gap between its rounds. */
+/* Fallback for other round counts: any post-trade answer followed by this much silence
+   on both sides. Longer than the cartridge's save, the longest normal gap. */
 #define TRADE_SHIM_FALLBACK_MS 8000
-/* The parent parked in its barrier answers the extra round within a frame or two. */
+/* A waiting parent answers the extra round within 1-2 frames. */
 #define TRADE_SHIM_ACK_MS 2000
 #define TRADE_SHIM_MAX_ATTEMPTS 4
 #define TRADE_SHIM_MAX_FAKES 16
-/* A child that accepted a block request starts sending within a couple of frames; one
-   silent this long since the request refused it (Rfu_InitBlockSend returns FALSE while a
-   previous block send or another command is pending), and the parent never repeats it.
-   Silence, not elapsed time, so a slow but accepted request is not answered twice. */
+/* A child that accepts a block request starts sending within 1-2 frames. Silence this
+   long means it refused (Rfu_InitBlockSend returns FALSE while a block send or another
+   command is pending). Measured as child silence so a slow accepted request is not
+   repeated. */
 #define TRADE_SHIM_REREQUEST_MS 700
 #define TRADE_SHIM_MAX_REREQUESTS 3
-/* Fragments per block request type, sBlockRequests[] in link_rfu_2.c: 200, 200,
-   100, 220 and 40 bytes in 12-byte fragments. */
+/* Lead role: the Switch buffers its party and clears its block flags a few frames
+   after its extra round is answered. Delay before releasing the GBA's held request and
+   block. A hold with no extra round ends after the timeout. */
+#define TRADE_SHIM_RELEASE_MS 150
+#define TRADE_SHIM_HOLD_TIMEOUT_MS 5000
+/* Lead role: repeat an unanswered request after this. Longer because the Switch's
+   answering block can take a while to start. */
+#define TRADE_SHIM_LEAD_REREQUEST_MS 1500
+/* Fragments per block request type. sBlockRequests[] in link_rfu_2.c: 200, 200, 100,
+   220, 40 bytes in 12-byte fragments. */
 static const uint8_t kRequestFragments[] = {17, 17, 9, 19, 4};
 
 /* ---- reset-surviving event log ---------------------------------------------- */
@@ -56,8 +61,8 @@ enum { EV_BOOT = 1, EV_RESET, EV_CONFIRM, EV_PARENT_STANDBY, EV_CHILD_STANDBY, E
 
 #define LOG_MAGIC 0x53484d34u   /* "SHM4" */
 #define LOG_SLOTS 400
-/* The history before the first stall since the log was last read, kept apart from the
-   ring so a failure that runs on for minutes cannot overwrite its own beginning. */
+/* History before the first stall since the last dump. Kept outside the ring so a long
+   failure cannot overwrite its own start. */
 #define INCIDENT_SLOTS 200
 #define INCIDENT_HISTORY 150
 
@@ -73,8 +78,8 @@ static RTC_NOINIT_ATTR struct
     log_entry_t incident[INCIDENT_SLOTS];
 } rtc_log;
 
-static bool incident_open;   /* entries logged now are also added to the incident */
-static int incident_reason;  /* the stall whose recovery releases the record: 0 none, 1 pia, 2 echo */
+static bool incident_open;   /* new entries also go to the incident */
+static int incident_reason;  /* stall that owns the record: 0 none, 1 pia, 2 echo */
 
 static void log_event_at(uint32_t ms, uint8_t type, uint8_t a, uint16_t b, uint16_t c)
 {
@@ -91,8 +96,8 @@ static void log_event(int64_t now_ms, uint8_t type, uint8_t a, uint16_t b, uint1
     log_event_at((uint32_t)now_ms, type, a, b, c);
 }
 
-/* Starts the incident record unless one is still waiting to be read: the recent history
-   is copied in, and everything logged until incident_end joins it. */
+/* Starts an incident record unless an unread one exists. Copies recent history, then
+   collects entries until incident_end. */
 static bool incident_begin(void)
 {
     if (rtc_log.magic != LOG_MAGIC || rtc_log.incident_count) return false;
@@ -107,8 +112,7 @@ static bool incident_begin(void)
 
 static void incident_end(void) { incident_open = false; }
 
-/* A stall that cleared on its own was not the failure: free the record for the next one
-   (its entries stay in the ring). */
+/* Stall cleared on its own: free the record. Entries stay in the ring. */
 static void incident_resolved(int64_t now_ms, int reason)
 {
     if (incident_reason != reason) return;
@@ -133,51 +137,57 @@ void trade_shim_boot(int reset_reason)
 
 static struct
 {
-    uint16_t fakes[TRADE_SHIM_MAX_FAKES];   /* injected rounds, parent numbering, ascending */
+    uint16_t fakes[TRADE_SHIM_MAX_FAKES];   /* extra rounds, Switch numbering, ascending */
     int fake_count;
-    int base;                 /* fakes older than the list, folded into a plain offset */
-    uint8_t send_tag;         /* the sequence tag the next frame sent to the parent gets */
-    bool have_tag;            /* the child has sent a command: its stream is established */
-    bool post_trade;          /* between the parent's trade confirmation and its next block request */
-    bool injected;            /* this trade's extra round has been supplied */
-    int last_round;           /* parent numbering of the parent's newest standby answer, -1 none */
-    int last_child_round;     /* parent numbering of the newest forwarded child standby command */
+    int base;                 /* fakes evicted from the list, as an offset */
+    uint8_t send_tag;         /* tag for the next frame sent to the parent */
+    bool have_tag;            /* child has sent a command */
+    bool post_trade;          /* from trade confirmation to the next block request */
+    bool injected;            /* extra round supplied for this trade */
+    int last_round;           /* newest parent standby answer, parent numbering, -1 none */
+    int last_child_round;     /* newest forwarded child standby, parent numbering */
     int answers_since_confirm;
-    int fake_round;           /* this trade's extra round, parent numbering, -1 none */
+    int fake_round;           /* extra round, parent numbering, -1 none */
     bool fake_acked;
     int attempts;
     int64_t injected_at;
     int64_t quiet_since;
-    int host_block_count;     /* fragment count announced by the parent's last block */
-    int request_type;         /* parent's newest block request, -1 none */
-    bool request_served;      /* the child has started answering it */
-    int64_t request_at;       /* when it (or its latest repeat) went to the child */
+    int host_block_count;     /* fragment count of the parent's last BLOCK_INIT */
+    int request_type;         /* parent's newest block request type, -1 none */
+    bool request_served;      /* child has started answering it */
+    int64_t request_at;       /* time of the request or its latest repeat */
     int request_attempts;
     int injections, reanswers, rerequests, trades, give_ups;
-    uint16_t child_commands;  /* command frames forwarded to the parent (injected ones included) */
-    uint16_t echoes;          /* host frames that echoed a child command back */
+    uint16_t child_commands;  /* command frames sent to the parent, injected included */
+    uint16_t echoes;          /* host frames echoing a child command */
     bool raw_tag_valid;
     uint8_t last_raw_tag;
     int tag_gaps;
-    /* The child's block in flight: the parent echoes each accepted fragment once, in
-       slot 1, and the child's link layer treats a missing echo as a send failure it
-       cannot repair (its resends carry no sequence tag). */
+    /* Child's block in flight. The parent echoes each accepted fragment once, in slot 1.
+       A missing echo is a send failure for the child (its resends carry no tag). */
     struct { bool active; uint8_t count; uint32_t sent, echoed; uint8_t data[32][12]; } cb;
-    /* The parent's block in flight, for gap forensics only. */
-    struct { bool active; uint8_t count, expect; } pb;
+    /* Parent's block in flight. Joiner role: gap logging. Lead role: fragments kept for
+       replay, since the Switch wipes a block that arrives early. */
+    struct { bool active; uint8_t count, expect; uint32_t have; uint8_t data[32][12]; } pb;
+    int replay_index, replay_count;   /* lead release: init, fragments, request */
+    bool request_answering;           /* lead: Switch's answering block has begun */
+    /* Lead hold: GBA block commands held from its last post-trade round until the
+       Switch's extra round is answered. */
+    bool hold;
+    int64_t hold_since, release_at;
     int echoes_synthesized, resends_restamped;
-    /* The child's newest command frame exactly as the GBA sent it. */
+    /* Child's newest command frame as received. */
     uint8_t last_frame[16];
     bool have_last_frame;
     int64_t last_command_ms;
-    /* The newest command frames sent to the parent and the echoes that came back. */
+    /* Recent command frames sent to the parent and their echoes, for the log. */
     struct { uint32_t ms; uint16_t command; uint8_t tag; } sent_ring[16];
     struct { uint32_t ms; uint16_t command; } echo_ring[16];
     int sent_head, echo_head, sent_count, echo_count;
     int64_t clock_ms, last_echo_ms;
     int sent_since_echo;
     bool echo_stall_reported;
-    uint32_t request_frags;   /* fragment indices the child has sent since the request */
+    uint32_t request_frags;   /* fragment indices sent since the request */
     int duplicates;
 } s;
 
@@ -197,8 +207,7 @@ static int64_t note_last_ms[64];
 
 void trade_shim_note(int64_t now_ms, uint8_t kind, uint16_t b, uint16_t c)
 {
-    /* These recur for as long as the Switch's stream is disturbed; one of each form every
-       ten seconds shows that without filling the log. */
+    /* Recur while the Switch's stream is disturbed. One per form per 10 s. */
     if (kind == TRADE_SHIM_NOTE_HOST_SILENCE || kind == TRADE_SHIM_NOTE_SWITCH_CLOCK_SKIP)
     {
         int key = (kind * 2 + (c != 0 && kind == TRADE_SHIM_NOTE_HOST_SILENCE)) % 64;
@@ -210,9 +219,8 @@ void trade_shim_note(int64_t now_ms, uint8_t kind, uint16_t b, uint16_t c)
 
 /* ---- loss counters ------------------------------------------------------------ */
 
-/* A full snapshot this often; in between, a line is written only when a counter it
-   watches moved, at most every CHANGE_LOG_MS while they keep moving, so a failure that
-   runs for minutes cannot push its own beginning out of the ring. */
+/* Full snapshot every TELEMETRY_PERIOD_MS. In between, only lines whose watched counters
+   moved, at most every CHANGE_LOG_MS, so a long failure cannot flush its own start. */
 #define TELEMETRY_PERIOD_MS 60000
 #define CHANGE_LOG_MS 10000
 
@@ -220,7 +228,7 @@ static struct
 {
     /* Pico, from tags 0x1D / 0x2E / 0x1E */
     uint16_t park_drops, park_idle_drops, uart_overflows, fifo_drops, aborts, retries;
-    uint8_t park_high, fifo_high, sd_resets, deliv_fail, comstate;
+    uint8_t park_high, fifo_high, sd_resets, deliv_fail, comstate, sheds;
     uint16_t err_responses, login_restarts;
     uint8_t ev_data, ev_rtx, ev_timeo, ev_disc, link_pwr_zero, wipe15, wipe16, wipe17;
     uint8_t last_cmd, last_plen, ring[8];
@@ -231,7 +239,7 @@ static struct
     bool seen;
     /* bridge */
     uint16_t reordered, hold_dropped, overflow, queued_high, bad_frames, decrypt_failures, unzip_failures;
-    uint16_t host_skips, host_long_skips;   /* host frames whose adapter clock jumped by 2 / by 3 or more */
+    uint16_t host_skips, host_long_skips;   /* host frames with adapter clock jump of 2 / 3+ */
     uint16_t rx_body_max, unzip_last_error;
     int64_t last_logged, last_change_logged;
 } t;
@@ -276,7 +284,7 @@ static bool line_moved(const counter_line_t *now, const counter_line_t *then)
     return ((now->watch & 1) && now->b != then->b) || ((now->watch & 2) && now->c != then->c);
 }
 
-/* periodic: every line. Otherwise the watched lines that moved, plus the context lines
+/* periodic: every line. Otherwise moved watched lines plus the unwatched context lines
    (adapter state, command ring, clock skips, command/echo counts). */
 static void log_counters(int64_t now_ms, bool periodic)
 {
@@ -319,9 +327,10 @@ void trade_shim_adapter(int64_t now_ms, const uint8_t *f, size_t n)
         t.link_pwr_zero = f[9];
         t.wipe15 = f[15]; t.wipe16 = f[16]; t.wipe17 = f[17];
         t.sd_resets = f[14];
-        if (f[18] > t.park_drops) t.park_drops = f[18];   /* the 0x1E copy is wider */
+        if (f[18] > t.park_drops) t.park_drops = f[18];   /* 0x1E has the wider copy */
         if (f[19] > t.fifo_drops) t.fifo_drops = f[19];
         if (f[20] > t.fifo_high) t.fifo_high = f[20];
+        t.sheds = f[22];
     }
     else if (n == 62 && f[0] == 0x2e)
     {
@@ -355,8 +364,8 @@ void trade_shim_adapter(int64_t now_ms, const uint8_t *f, size_t n)
     }
     else if (n >= 4 && f[0] == 0x2d && f[1] != t.last_trace_seq)
     {
-        /* The adapter's exchange trace at the moment the game reset it mid-link:
-           the commands, events and restarts that led up to a game-side link error. */
+        /* Adapter exchange trace captured when the game reset it mid-link: commands,
+           events and restarts before a game-side link error. */
         t.last_trace_seq = f[1];
         ++t.trace_snapshots;
         uint8_t count = f[2];
@@ -392,19 +401,20 @@ void trade_shim_bridge_counters(int64_t now_ms, uint16_t reordered, uint16_t hol
     consider_logging(now_ms);
 }
 
-/* Round-number mapping. A child round c is the parent's round c plus every injected
-   round at or below it; an injected round has no child counterpart. */
-static int to_parent(int c)
+/* Round-number mapping. The Switch runs the extra rounds, so its numbers are ahead.
+   Fakes use Switch numbering. Cartridge round b maps to b plus every extra round at or
+   below the result. Joiner role: Switch = parent. Lead role: Switch = child. */
+static int to_ahead(int b)
 {
-    int p = c + s.base;
-    for (int i = 0; i < s.fake_count; ++i) if (s.fakes[i] <= p) ++p;
-    return p;
+    int a = b + s.base;
+    for (int i = 0; i < s.fake_count; ++i) if (s.fakes[i] <= a) ++a;
+    return a;
 }
-static int to_child(int p)
+static int to_behind(int a)
 {
-    int c = p - s.base;
-    for (int i = 0; i < s.fake_count; ++i) if (s.fakes[i] < p) --c;
-    return c;
+    int b = a - s.base;
+    for (int i = 0; i < s.fake_count; ++i) if (s.fakes[i] < a) --b;
+    return b;
 }
 static bool is_fake(int p)
 {
@@ -415,8 +425,7 @@ static void add_fake(int p)
 {
     if (s.fake_count == TRADE_SHIM_MAX_FAKES)
     {
-        /* Rounds only move forward, so the oldest one is far behind every number
-           still in play and can become part of the plain offset. */
+        /* Rounds only increase: fold the oldest fake into the offset. */
         memmove(s.fakes, s.fakes + 1, sizeof(s.fakes) - sizeof(s.fakes[0]));
         --s.fake_count;
         ++s.base;
@@ -424,8 +433,8 @@ static void add_fake(int p)
     s.fakes[s.fake_count++] = (uint16_t)p;
 }
 
-/* A parent UNI frame for the child: 3-byte LLSF header (one child slot, UNI state,
-   70 data bytes) and five 14-byte slots. */
+/* Parent UNI frame: 3-byte LLSF header (one child slot, UNI state, 70 data bytes) and
+   five 14-byte slots. */
 static size_t build_host_frame(uint8_t *out, uint16_t cmd0, uint16_t v0, uint16_t cmd1, uint16_t v1)
 {
     memset(out, 0, 73);
@@ -461,20 +470,19 @@ size_t trade_shim_child(uint8_t *payload, size_t length, int64_t now_ms, uint8_t
     s.last_command_ms = now_ms;
     if (s.have_last_frame && memcmp(payload, s.last_frame, 16) == 0)
     {
-        /* The same frame twice in a row: the adapter handed one GBA transfer over again
-           (librfu re-runs an exchange whose acknowledgement it misread). The game's own
-           commands always advance the tag, so this is not a new command; forwarding it
-           would make the parent act on it twice. */
+        /* Identical frame twice: the adapter repeated one GBA transfer (librfu re-runs an
+           exchange whose ack it misread). Real commands always advance the tag. Dropped
+           so the parent does not act twice. */
         if (forward) *forward = false;
         ++s.duplicates;
         return 0;
     }
     memcpy(s.last_frame, payload, 16);
     s.have_last_frame = true;
-    /* Tags are stamped at send time (trade_shim_stamp), not forwarded: the parent accepts
-       only the previous tag plus one and gives up on the child after five misses in a row,
-       which a lost frame or the block-resend path would cause (HandleSendFailure queues
-       fragments unstamped, arriving as tag 0). Raw tags are still checked, for the log. */
+    /* Tags are replaced at send time (trade_shim_stamp). The parent accepts only previous
+       tag + 1 and drops the child after five misses in a row. Lost frames and block
+       resends break that (HandleSendFailure queues fragments untagged, as tag 0). Raw
+       tags are checked here for the log only. */
     bool resend = false;
     if (s.raw_tag_valid && raw_tag != ((s.last_raw_tag + 1) & 7))
     {
@@ -490,7 +498,7 @@ size_t trade_shim_child(uint8_t *payload, size_t length, int64_t now_ms, uint8_t
             log_event(now_ms, EV_NOTE, TRADE_SHIM_NOTE_CHILD_TAG_GAP, s.last_raw_tag, raw_tag);
         }
     }
-    if (!resend)                                       /* a resend sits between two stamped frames */
+    if (!resend)                                       /* a resend sits between two tagged frames */
     {
         s.last_raw_tag = raw_tag;
         s.raw_tag_valid = true;
@@ -513,9 +521,9 @@ size_t trade_shim_child(uint8_t *payload, size_t length, int64_t now_ms, uint8_t
     }
     if (s.request_type >= 0 && !s.request_served)
     {
-        /* The answer is a block of the requested size: its INIT or, should every INIT
-           copy have been lost, all of its fragments. A block the child sends on its own
-           (its 20-byte trade menu messages) or the resend loop of an earlier block is not. */
+        /* Served by a block of the requested size: its INIT, or all fragments if every
+           INIT was lost. Excludes the child's own 20-byte trade menu blocks and resends
+           of an earlier block. */
         size_t type = (size_t)s.request_type;
         if (type >= sizeof(kRequestFragments)) s.request_served = true;
         else if (command == RFUCMD_SEND_BLOCK_INIT) s.request_served = rd16(slot + 2) == kRequestFragments[type];
@@ -528,22 +536,21 @@ size_t trade_shim_child(uint8_t *payload, size_t length, int64_t now_ms, uint8_t
     }
     if (command != RFUCMD_READY_EXIT_STANDBY) return 0;
 
-    int c = rd16(slot + 2), p = to_parent(c);
+    int c = rd16(slot + 2), p = to_ahead(c);
     wr16(slot + 2, (uint16_t)p);
     if (p > s.last_child_round) s.last_child_round = p;
     log_event(now_ms, EV_CHILD_STANDBY, raw_tag, (uint16_t)c, (uint16_t)p);
 
-    /* The parent answered this barrier already and has left it; it will never answer
-       again, so the child's retry means the answer was lost on its way down. Complete
-       the child's barrier on the parent's behalf. A late genuine copy is ignored by the
-       child, whose counter has moved on. */
+    /* Retry of a barrier the parent already left: its answer was lost and will not be
+       re-sent. Answer for the parent. A late real copy is ignored by the child, whose
+       counter has moved on. */
     if (p > s.last_round || reply_capacity < 146) return 0;
     size_t n = build_host_frame(reply, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c);
     ++s.reanswers;
     log_event(now_ms, EV_REANSWER, 0, (uint16_t)c, (uint16_t)p);
     printf("LDN_BRIDGE GBA is retrying standby round %d that the Switch already answered (as %d), answering for it\n", c, p);
-    /* A party request that arrived while the child was still inside that barrier was
-       refused by its link layer and the parent does not repeat it. */
+    /* A party request that arrived during that barrier was refused by the child's link
+       layer. The parent does not repeat it. */
     if (s.request_type >= 0 && !s.request_served && s.request_attempts < TRADE_SHIM_MAX_REREQUESTS)
     {
         n += build_host_frame(reply + n, RFUCMD_SEND_BLOCK_REQ, (uint16_t)s.request_type, 0, 0);
@@ -565,7 +572,7 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
     if (((header >> 14) & 15) != 4) return 0;           /* not a UNI frame */
     size_t size = header & 0x7f;
     if (size < 28 || 3 + size > length) return 0;
-    for (int i = 0; i < 2; ++i)                       /* slot 0: the parent, slot 1: this child's echo */
+    for (int i = 0; i < 2; ++i)                       /* slot 0: parent, slot 1: echo of this child */
     {
         uint8_t *slot = payload + 3 + 14 * i;
         uint16_t command = rd16(slot), value = rd16(slot + 2);
@@ -589,8 +596,8 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
             if (index < s.cb.count) s.cb.echoed |= 1u << index;
             if (index + 1 == s.cb.count)
             {
-                /* The child acts on this echo: any earlier fragment it sent that was
-                   never echoed becomes a "send failure". Supply those echoes first. */
+                /* The child acts on this echo. Unechoed earlier fragments would count as
+                   send failures, so supply their echoes first. */
                 uint32_t below = (1u << index) - 1;
                 uint32_t missing = s.cb.sent & ~s.cb.echoed & below;
                 if (missing) log_event(now_ms, EV_NOTE, TRADE_SHIM_NOTE_ECHO_GAP, (uint16_t)missing, s.cb.count);
@@ -599,8 +606,8 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
                     if (!(missing & (1u << k))) continue;
                     uint8_t *f = pre + pre_len;
                     memset(f, 0, 73);
-                    memcpy(f, payload, 3);                     /* same LLSF header as the real frame */
-                    f[17] = k; f[18] = RFUCMD_SEND_BLOCK >> 8; /* slot 1: the echo, tag already stripped */
+                    memcpy(f, payload, 3);                     /* LLSF header of the real frame */
+                    f[17] = k; f[18] = RFUCMD_SEND_BLOCK >> 8; /* slot 1: echo, tag stripped */
                     memcpy(f + 19, s.cb.data[k], 12);
                     pre_len += 73;
                     s.cb.echoed |= 1u << k;
@@ -612,8 +619,8 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
         }
         if (i == 0 && (command & 0xff00) == RFUCMD_SEND_BLOCK && s.pb.active)
         {
-            /* Forensics only: the parent sends each fragment once, so a gap here is a
-               fragment the child can never receive. */
+            /* Logging only. The parent sends each fragment once, so a gap is a fragment
+               the child never receives. */
             uint8_t index = (uint8_t)(command & 0x1f);
             if (index != s.pb.expect && index + 1 != s.pb.expect)
                 log_event(now_ms, EV_NOTE, TRADE_SHIM_NOTE_PARENT_FRAGMENT_GAP, s.pb.expect, index);
@@ -657,7 +664,7 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
                 if (s.post_trade)
                 {
                     s.post_trade = false;
-                    s.fake_acked = true;              /* the parent has moved on, whatever it saw */
+                    s.fake_acked = true;              /* parent has moved on */
                     printf("LDN_BRIDGE Switch is requesting party data again\n");
                 }
             }
@@ -665,9 +672,8 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
         if (command != RFUCMD_READY_EXIT_STANDBY) continue;
         if (is_fake(value))
         {
-            /* The parent's half of an injected round. The child is not in that round,
-               so this must not reach it: a stray matching command would pre-arm its
-               next barrier. */
+            /* Parent's half of an injected round. Hidden from the child: a matching
+               number would pre-arm its next barrier. */
             if (i == 0 && value == s.fake_round && !s.fake_acked)
             {
                 s.fake_acked = true;
@@ -683,7 +689,7 @@ size_t trade_shim_host(uint8_t *payload, size_t length, int64_t now_ms, uint8_t 
             s.last_round = value;
             if (s.post_trade) ++s.answers_since_confirm;
         }
-        uint16_t child_value = (uint16_t)to_child(value);
+        uint16_t child_value = (uint16_t)to_behind(value);
         wr16(slot + 2, child_value);
         log_event(now_ms, EV_PARENT_STANDBY, (uint8_t)i, value, child_value);
     }
@@ -719,9 +725,8 @@ size_t trade_shim_inject(int64_t now_ms, uint8_t *out, size_t capacity)
         if (s.give_ups == s.injections - 1) { ++s.give_ups; log_event(now_ms, EV_GIVE_UP, 0, (uint16_t)s.fake_round, 0); }
         return 0;
     }
-    /* Same round again. If the parent's game did see the first copy and its answer is
-       merely late, this one arrives after the round completed and is ignored as a
-       number that no longer matches. */
+    /* Re-send the round. If the first copy was seen and the answer is just late, this
+       copy arrives after the round and is ignored as a stale number. */
     ++s.attempts;
     s.injected_at = now_ms;
     log_event(now_ms, EV_INJECT, 0, (uint16_t)s.fake_round, (uint16_t)(0x100 | s.attempts));
@@ -734,10 +739,9 @@ size_t trade_shim_host_inject(int64_t now_ms, uint8_t *out, size_t capacity)
     if (capacity < 73 || s.request_type < 0 || s.request_served) return 0;
     if (s.request_attempts >= TRADE_SHIM_MAX_REREQUESTS || now_ms - s.request_at < TRADE_SHIM_REREQUEST_MS
         || now_ms - s.last_command_ms < TRADE_SHIM_REREQUEST_MS) return 0;
-    /* The child's link layer refused the parent's block request (it was still inside
-       its previous block send, where a lost echo keeps it, or another command was
-       pending) and the parent asks only once. The child accepts a repeat once it is
-       free; while it is still busy the repeat is refused the same way. */
+    /* The child's link layer refused the request (previous block send still open, e.g.
+       after a lost echo, or another command pending). The parent asks once. A repeat
+       while still busy is refused the same way. */
     ++s.request_attempts;
     ++s.rerequests;
     s.request_at = now_ms;
@@ -747,13 +751,263 @@ size_t trade_shim_host_inject(int64_t now_ms, uint8_t *out, size_t capacity)
     return build_host_frame(out, RFUCMD_SEND_BLOCK_REQ, (uint16_t)s.request_type, 0, 0);
 }
 
+/* ---- lead role: GBA is parent, Switch is child ------------------------------------ */
+
+size_t trade_shim_lead_child(uint8_t *payload, size_t length, int64_t now_ms, uint8_t *reply, size_t reply_capacity, bool *forward)
+{
+    if (forward) *forward = true;
+    s.clock_ms = now_ms;
+    if (length < 16) return 0;
+    if (((rd16(payload) >> 10) & 15) != 4) return 0;  /* not a UNI frame */
+    uint8_t *slot = payload + 2;
+    if (slot[1] == 0) return 0;                        /* idle: no command */
+    s.quiet_since = s.last_command_ms = now_ms;
+    s.have_tag = true;
+    uint16_t command = (uint16_t)((slot[1] << 8) | (slot[0] & 0x1f));
+    uint8_t index = (uint8_t)(slot[0] & 0x1f);
+    bool fragment = (command & 0xff00) == RFUCMD_SEND_BLOCK;
+    if (s.request_type >= 0 && !s.request_served)
+    {
+        size_t type = (size_t)s.request_type;
+        if (command == RFUCMD_SEND_BLOCK_INIT || fragment) s.request_answering = true;
+        if (type >= sizeof(kRequestFragments)) s.request_served = true;
+        else if (command == RFUCMD_SEND_BLOCK_INIT) s.request_served = rd16(slot + 2) == kRequestFragments[type];
+        else if (fragment && index < 32)
+        {
+            uint32_t all = (1u << kRequestFragments[type]) - 1;
+            s.request_frags |= 1u << index;
+            s.request_served = (s.request_frags & all) == all;
+        }
+    }
+    if (command != RFUCMD_READY_EXIT_STANDBY || reply_capacity < 146) return 0;
+
+    /* Switch frames keep their own tags, which the GBA requires consecutive, so none is
+       dropped. A frame the GBA must ignore gets round number 0xffff. */
+    int c = rd16(slot + 2);
+    if (is_fake(c))
+    {
+        /* Extra round retried: the answer has not reached the Switch yet. */
+        wr16(slot + 2, 0xffff);
+        log_event(now_ms, EV_CHILD_STANDBY, 1, (uint16_t)c, 0xffff);
+        return build_host_frame(reply, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c);
+    }
+    int p = to_behind(c);
+    log_event(now_ms, EV_CHILD_STANDBY, 0, (uint16_t)c, (uint16_t)p);
+    size_t n = 0;
+    if (p > s.last_round)
+    {
+        /* Past the GBA's newest barrier. After the cartridge's post-trade rounds this is
+           the Switch's extra round, which the GBA never answers. Answered here and
+           forwarded as 0xffff, since the GBA's barrier of that number is still ahead. */
+        wr16(slot + 2, (uint16_t)p);
+        if (!s.post_trade || s.injected || s.answers_since_confirm < TRADE_SHIM_CHILD_ROUNDS) return 0;
+        add_fake(c);
+        s.fake_round = c;
+        s.injected = true;
+        s.post_trade = false;
+        ++s.injections;
+        if (s.hold) s.release_at = now_ms + TRADE_SHIM_RELEASE_MS;
+        wr16(slot + 2, 0xffff);
+        log_event(now_ms, EV_INJECT, 1, (uint16_t)c, (uint16_t)s.answers_since_confirm);
+        printf("LDN_BRIDGE answered the Switch's extra standby round %d for the GBA after %d rounds\n", c, s.answers_since_confirm);
+        n = build_host_frame(reply, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c);
+    }
+    else
+    {
+        /* Retry of a barrier the GBA already left: its answer was lost. Answer for it. */
+        wr16(slot + 2, (uint16_t)p);
+        ++s.reanswers;
+        log_event(now_ms, EV_REANSWER, 1, (uint16_t)c, (uint16_t)p);
+        printf("LDN_BRIDGE Switch is retrying standby round %d that the GBA already answered (as %d), answering for it\n", c, p);
+        n = build_host_frame(reply, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c, RFUCMD_READY_EXIT_STANDBY, (uint16_t)c);
+    }
+    /* A party request refused during that barrier is repeated by
+       trade_shim_lead_inject. The GBA does not repeat it. */
+    return n;
+}
+
+void trade_shim_lead_parent(uint8_t *payload, size_t length, int64_t now_ms)
+{
+    s.clock_ms = now_ms;
+    if (length < 3) return;
+    uint32_t header = payload[0] | (payload[1] << 8) | ((uint32_t)payload[2] << 16);
+    if (((header >> 14) & 15) != 4) return;             /* not a UNI frame */
+    size_t size = header & 0x7f;
+    if (size < 28 || 3 + size > length) return;
+    for (int i = 0; i < 2; ++i)                       /* slot 0: GBA, slot 1: echo of the Switch */
+    {
+        uint8_t *slot = payload + 3 + 14 * i;
+        uint16_t command = rd16(slot), value = rd16(slot + 2);
+        if (command == 0) continue;
+        s.quiet_since = now_ms;
+        if (i == 0 && (command & 0xff00) == RFUCMD_SEND_BLOCK && s.pb.active)
+        {
+            uint8_t index = (uint8_t)(command & 0x1f);
+            if (index < s.pb.count) { memcpy(s.pb.data[index], slot + 2, 12); s.pb.have |= 1u << index; }
+        }
+        if (i == 0)
+        {
+            if (command == RFUCMD_SEND_BLOCK_INIT)
+            {
+                if (value != s.host_block_count) log_event(now_ms, EV_HOST_BLOCK, 0, value, 0);
+                s.host_block_count = value;
+                s.pb.active = value >= 1 && value <= 32;
+                s.pb.count = (uint8_t)value;
+                s.pb.have = 0;
+            }
+            if (s.hold && (command == RFUCMD_SEND_BLOCK_REQ || command == RFUCMD_SEND_BLOCK_INIT || (command & 0xff00) == RFUCMD_SEND_BLOCK))
+            {
+                /* GBA past its last barrier, Switch still in its extra one. A request now
+                   would arrive before the Switch buffers its party and the block would be
+                   cleared. Held here, released by trade_shim_lead_inject. */
+                if (command == RFUCMD_SEND_BLOCK_REQ)
+                {
+                    s.request_type = value;
+                    s.request_served = s.request_answering = false;
+                    s.request_attempts = 0;
+                    s.request_frags = 0;
+                    log_event(now_ms, EV_REQUEST, 2, value, 0);
+                }
+                memset(slot, 0, 14);
+                continue;
+            }
+            else if (command == RFUCMD_SEND_BLOCK && s.host_block_count == 2 && value == LINKCMD_CONFIRM_FINISH_TRADE)
+            {
+                s.post_trade = true;
+                s.injected = false;
+                s.answers_since_confirm = 0;
+                s.fake_round = -1;
+                s.hold = false;
+                s.release_at = 0;
+                ++s.trades;
+                log_event(now_ms, EV_CONFIRM, 1, (uint16_t)s.trades, (uint16_t)(s.last_round + 1));
+                printf("LDN_BRIDGE trade %d confirmed, watching the post-trade standby rounds\n", s.trades);
+            }
+            else if (command == RFUCMD_SEND_BLOCK_REQ)
+            {
+                s.request_type = value;
+                s.request_served = s.request_answering = false;
+                s.request_at = now_ms;
+                s.request_attempts = 0;
+                s.request_frags = 0;
+                log_event(now_ms, EV_REQUEST, s.post_trade ? 1 : 0, value, 0);
+            }
+        }
+        if (command != RFUCMD_READY_EXIT_STANDBY) continue;
+        if (i == 0 && (int)value > s.last_round)
+        {
+            s.last_round = value;
+            if (s.post_trade && ++s.answers_since_confirm == TRADE_SHIM_CHILD_ROUNDS && !s.hold)
+            {
+                s.hold = true;
+                s.hold_since = now_ms;
+                s.release_at = 0;
+            }
+        }
+        uint16_t child_value = (uint16_t)to_ahead(value);
+        wr16(slot + 2, child_value);
+        log_event(now_ms, EV_PARENT_STANDBY, (uint8_t)(2 + i), value, child_value);
+    }
+}
+
+/* Replay order: GBA's block first, request last. The Switch answers the request at once
+   with its own block, whose echoes would otherwise crowd out the replayed fragments. */
+static size_t lead_release_frame(uint8_t *out)
+{
+    int k = s.replay_index++;
+    if (k == s.replay_count - 1) return build_host_frame(out, RFUCMD_SEND_BLOCK_REQ, (uint16_t)s.request_type, 0, 0);
+    if (k == 0) return build_host_frame(out, RFUCMD_SEND_BLOCK_INIT, s.pb.count, 0x80, 0);
+    uint8_t index = (uint8_t)(k - 1);
+    memset(out, 0, 73);
+    out[0] = 0x46; out[1] = 0x00; out[2] = 0x05;
+    wr16(out + 3, (uint16_t)(RFUCMD_SEND_BLOCK | index));
+    memcpy(out + 5, s.pb.data[index], 12);
+    return 73;
+}
+
+static bool parent_block_whole(void)
+{
+    return s.pb.active && s.pb.count > 0 && s.pb.have == (s.pb.count == 32 ? 0xffffffffu : (1u << s.pb.count) - 1);
+}
+
+size_t trade_shim_lead_inject(int64_t now_ms, uint8_t *out, size_t capacity)
+{
+    if (capacity < 73) return 0;
+    if (s.replay_index < s.replay_count)
+    {
+        size_t n = lead_release_frame(out);
+        if (s.replay_index == s.replay_count && s.hold) { s.hold = false; s.request_at = now_ms; }
+        return n;
+    }
+    if (s.hold)
+    {
+        /* Release after release_at, or after the timeout if no extra round came. Block
+           and request if the block is whole, else the request alone. */
+        const bool timeout = now_ms - s.hold_since > TRADE_SHIM_HOLD_TIMEOUT_MS;
+        if (s.request_type < 0) { if (timeout) s.hold = false; return 0; }
+        const bool due = (s.release_at && now_ms >= s.release_at) || timeout;
+        if (!due) return 0;
+        if (!parent_block_whole() && !timeout && now_ms < s.release_at + 500) return 0;
+        s.replay_count = parent_block_whole() ? 2 + s.pb.count : 1;
+        s.replay_index = 0;
+        s.release_at = 0;
+        log_event(now_ms, EV_REREQUEST, 0x20, (uint16_t)s.request_type, (uint16_t)s.replay_count);
+        printf("LDN_BRIDGE releasing the GBA's %sparty request %d to the Switch\n",
+               s.replay_count > 1 ? "block and " : "", s.request_type);
+        size_t n = lead_release_frame(out);
+        if (s.replay_index == s.replay_count) { s.hold = false; s.request_at = now_ms; }
+        return n;
+    }
+    if (s.request_type < 0 || s.request_served || s.request_answering) return 0;
+    if (s.request_attempts >= TRADE_SHIM_MAX_REREQUESTS || now_ms - s.request_at < TRADE_SHIM_LEAD_REREQUEST_MS
+        || now_ms - s.last_command_ms < TRADE_SHIM_REREQUEST_MS) return 0;
+    /* Request refused by the Switch's link layer (barrier still open). The GBA asks once.
+       Request only: the block already reached the Switch, and a second copy would cut
+       into the answer. */
+    ++s.request_attempts;
+    ++s.rerequests;
+    s.request_at = now_ms;
+    s.replay_count = 1;
+    s.replay_index = 0;
+    log_event(now_ms, EV_REREQUEST, (uint8_t)(0x10 | s.request_attempts), (uint16_t)s.request_type, 1);
+    printf("LDN_BRIDGE Switch has not answered the GBA's party request %d, repeating it (attempt %d)\n",
+           s.request_type, s.request_attempts);
+    return lead_release_frame(out);
+}
+
+void trade_shim_adapter_counts(uint8_t *queue_high, uint16_t *queue_drops, uint8_t *sheds, uint16_t *uart_overflows)
+{
+    *queue_high = t.fifo_high;
+    *queue_drops = t.fifo_drops;
+    *sheds = t.sheds;
+    *uart_overflows = t.uart_overflows;
+}
+
+/* Lead role: own slot and echo slot each empty, no key or a direction; no other slots
+   in use. */
+bool trade_shim_parent_sheddable(const uint8_t *payload, size_t length)
+{
+    if (length < 3 + 14 * 2) return false;
+    uint32_t header = payload[0] | (payload[1] << 8) | ((uint32_t)payload[2] << 16);
+    if (((header >> 14) & 15) != 4) return false;
+    for (size_t o = 3; o + 14 <= length; o += 14)
+    {
+        const uint8_t *slot = payload + o;
+        if (slot[1] == 0 && slot[0] == 0) continue;
+        if (o >= 3 + 14 * 2 || slot[1] != (RFUCMD_SEND_HELD_KEYS >> 8)) return false;
+        const uint8_t key = slot[2];
+        if (!(key == 0 || (key >= LINK_KEY_CODE_EMPTY && key <= LINK_KEY_CODE_DPAD_RIGHT))) return false;
+    }
+    return true;
+}
+
 bool trade_shim_sheddable(const uint8_t *payload, size_t length)
 {
     if (length < 6 || ((rd16(payload) >> 10) & 15) != 4) return false;
-    if (payload[3] == 0) return true;   /* no command: carries nothing */
+    if (payload[3] == 0) return true;   /* no command */
     if (payload[3] != (RFUCMD_SEND_HELD_KEYS >> 8)) return false;
-    /* Nothing held, or a direction: the next report says the same or newer. A button
-       report (A, READY, EXIT_ROOM) is an action that happens once and must arrive. */
+    /* No key or a direction: superseded by the next report. Buttons (A, READY,
+       EXIT_ROOM) are one-shot and must arrive. */
     const uint8_t key = payload[4];
     return key == 0 || (key >= LINK_KEY_CODE_EMPTY && key <= LINK_KEY_CODE_DPAD_RIGHT);
 }
@@ -791,8 +1045,8 @@ static uint16_t clamp16(int64_t v) { return v < 0 ? 0 : v > 65535 ? 65535 : (uin
 void trade_shim_poll(int64_t now_ms)
 {
     s.clock_ms = now_ms;
-    /* Commands keep going to the parent and none come back: its game has stopped taking
-       the child's frames (a sequence it rejected, or its own link error). */
+    /* Commands sent but none echoed: the parent stopped accepting child frames (rejected
+       tag sequence or its own link error). */
     if (!s.echo_stall_reported && s.sent_since_echo >= 6 && s.last_echo_ms && now_ms - s.last_echo_ms >= 2000)
     {
         s.echo_stall_reported = true;
@@ -959,7 +1213,7 @@ bool trade_shim_dump_step(void (*emit)(const char *line), int max_lines)
         case 3:
             if (dump.index >= dump.count)
             {
-                rtc_log.incident_count = 0;   /* read: the next stall may record a new one */
+                rtc_log.incident_count = 0;   /* read: free for the next stall */
                 incident_reason = 0;
                 emit("LDN_SHIM_LOG end");
                 dump.phase = 4;

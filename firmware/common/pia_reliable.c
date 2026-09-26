@@ -112,7 +112,7 @@ int pia_reliable_retransmit(pia_reliable_t *r, double time, int limit, pia_packe
         pia_pending_t *e = slot_of(r, seq);
         if (!e) continue;
         if (e->acked) continue;
-        /* Fast retransmit only for the frame the peer has reported missing three times. */
+        /* Fast retransmit only after the peer reports this frame missing three times. */
         bool fast = r->gap == (int)seq && e->resends == 0 && r->gap_count >= 3;
         if (!fast && time - e->time < rto) break;
         e->time = time;
@@ -139,8 +139,8 @@ static bool ooo_remove(pia_reliable_t *r, uint16_t seq)
 
 void pia_reliable_receive(pia_reliable_t *r, uint16_t seq, uint16_t advertised_low)
 {
-    /* Each peer picks its own starting sequence, so adopt its advertised window base
-       rather than the first arrival; otherwise an early reorder hides a gap. */
+    /* Start from the peer's advertised window base, not the first arrival, so an early
+       reorder cannot hide a gap. */
     if (!r->receive_started) { r->receive_next = advertised_low; r->receive_started = true; }
 
     if (seq == r->receive_next)

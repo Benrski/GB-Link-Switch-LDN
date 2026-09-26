@@ -22,8 +22,8 @@ uint32_t bin_crc32(const uint8_t *data, size_t length)
     return ~crc;
 }
 
-/* mbedtls 4 exposes only the PSA API; the classic mbedtls/aes.h is private.
-   PSA also gives Pia's 8-byte GCM tag directly via a shortened-tag algorithm. */
+/* mbedtls 4 exposes only the PSA API (mbedtls/aes.h is private). PSA's shortened-tag
+   GCM gives Pia's 8-byte tag directly. */
 static void psa_ready(void)
 {
     static bool done;
@@ -58,16 +58,16 @@ void pia_ecb(const uint8_t key[16], const uint8_t in[16], uint8_t out[16], bool 
     psa_destroy_key(k);
 }
 
-bool pia_gcm(const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t nonce_len,
-             const uint8_t *aad, size_t aad_len, const uint8_t *in, size_t in_len,
-             uint8_t *out, uint8_t *tag, size_t tag_len, bool encrypt)
+static bool aead(psa_algorithm_t base, const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t nonce_len,
+                 const uint8_t *aad, size_t aad_len, const uint8_t *in, size_t in_len,
+                 uint8_t *out, uint8_t *tag, size_t tag_len, bool encrypt)
 {
-    psa_algorithm_t alg = PSA_ALG_AEAD_WITH_SHORTENED_TAG(PSA_ALG_GCM, tag_len);
+    psa_algorithm_t alg = PSA_ALG_AEAD_WITH_SHORTENED_TAG(base, tag_len);
     mbedtls_svc_key_id_t k;
     if (import_aes(key, key_len, alg, PSA_KEY_USAGE_ENCRYPT | PSA_KEY_USAGE_DECRYPT, &k) != PSA_SUCCESS)
         return false;
 
-    /* PSA keeps ciphertext and tag contiguous; Pia carries the tag in its header. */
+    /* PSA outputs ciphertext then tag; Pia puts the tag in its header. */
     static uint8_t joined[PIA_MAX_DATAGRAM + 16];
     bool ok = false;
     size_t written = 0;
@@ -90,6 +90,13 @@ bool pia_gcm(const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t no
     }
     psa_destroy_key(k);
     return ok;
+}
+
+bool pia_gcm(const uint8_t *key, size_t key_len, const uint8_t *nonce, size_t nonce_len,
+             const uint8_t *aad, size_t aad_len, const uint8_t *in, size_t in_len,
+             uint8_t *out, uint8_t *tag, size_t tag_len, bool encrypt)
+{
+    return aead(PSA_ALG_GCM, key, key_len, nonce, nonce_len, aad, aad_len, in, in_len, out, tag, tag_len, encrypt);
 }
 
 void pia_ctr(const uint8_t key[16], const uint8_t nonce4[4], const uint8_t *in, size_t len, uint8_t *out)
@@ -144,8 +151,8 @@ static bool parse_ip(const char *text, uint8_t out[4])
     return true;
 }
 
-/* The nonce mixes the network id with the sender's address, so a datagram only
-   authenticates against the peer it claims to come from. */
+/* Nonce = network id XOR sender IP, plus seed. A datagram only authenticates against
+   its claimed source. */
 static bool build_nonce(const pia_crypto_t *c, const char *ip, const uint8_t seed[8], uint8_t out[12])
 {
     uint8_t addr[4];
@@ -163,7 +170,7 @@ int pia_decrypt(const pia_crypto_t *c, const uint8_t *datagram, size_t length,
     if (body > out_cap) return -1;
     uint8_t nonce[12];
     if (!build_nonce(c, source_ip, datagram + 13, nonce)) return -1;
-    /* Wire order is header, tag, ciphertext. */
+    /* Wire order: header, tag, ciphertext. */
     if (!pia_gcm(c->key, 16, nonce, 12, NULL, 0, datagram + 29, body, out,
                  (uint8_t *)(datagram + 21), 8, false))
         return -1;
@@ -189,11 +196,10 @@ int pia_encrypt(const pia_crypto_t *c, const uint8_t *body, size_t body_len, con
 
 static ZSTD_DCtx *s_dctx;
 
-/* The context needs 38,464 contiguous bytes with this build of the library. The heap
-   is small and fragments during start-up, and a context that cannot be allocated
-   makes every compressed datagram from the Switch undecodable, which looks like a
-   room that never answers. So it has a fixed home where the chip's static data region
-   allows, and is otherwise claimed from the heap at the very start of boot. */
+/* The context needs 38,464 contiguous bytes with this zstd build. The heap fragments at
+   start-up; without a context every compressed Switch datagram is undecodable and the
+   room looks silent. Static where the chip's data region allows, else allocated from
+   the heap at the start of boot. */
 #if CONFIG_PIA_STATIC_ZSTD_CONTEXT
 static uint64_t s_dctx_space[40960 / sizeof(uint64_t)];
 #endif
@@ -218,7 +224,7 @@ int pia_decompress(const uint8_t *in, size_t len, uint8_t *out, size_t out_cap)
         return (int)len;
     }
     if (!s_dctx && !pia_crypto_prepare()) return -1;
-    /* Pia may append footer bytes after the frame, so decode the frame alone. */
+    /* Pia may append footer bytes; decode only the frame. */
     size_t frame = ZSTD_findFrameCompressedSize(in, len);
     if (ZSTD_isError(frame)) return -(1000 + (int)ZSTD_getErrorCode(frame));
     size_t written = ZSTD_decompressDCtx(s_dctx, out, out_cap, in, frame);
@@ -228,9 +234,8 @@ int pia_decompress(const uint8_t *in, size_t len, uint8_t *out, size_t out_cap)
 
 int pia_compress_raw(const uint8_t *in, size_t len, uint8_t *out, size_t out_cap)
 {
-    /* Magic, a frame header of 0x00 (no dictionary, size or checksum) and window
-       descriptor 0x18 (the canonical form the host rewrites every frame into),
-       followed by one raw, final block. */
+    /* Magic, frame header 0x00 (no dictionary, size or checksum), window descriptor 0x18
+       (canonical form the host uses), then one raw final block. */
     if (len > 0x1FFFF || out_cap < len + 9) return -1;
     static const uint8_t prefix[6] = {0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x18};
     memcpy(out, prefix, sizeof(prefix));
@@ -263,7 +268,7 @@ void pia_message_iter_init(pia_message_iter_t *it, const uint8_t *data, size_t l
     it->flags = 0;
 }
 
-/* A message header only carries the fields that differ from the previous message. */
+/* A message header carries only the fields that differ from the previous message. */
 bool pia_message_next(pia_message_iter_t *it, pia_message_t *out)
 {
     const uint8_t *data = it->data;

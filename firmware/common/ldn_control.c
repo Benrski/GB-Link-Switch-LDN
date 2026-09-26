@@ -17,6 +17,7 @@
 #include "ldn_keys.h"
 #include "pia_bridge.h"
 #include "trade_shim.h"
+#include "esp_timer.h"
 #define printf ldn_wire_printf
 #define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
 #define MACARGS(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
@@ -27,6 +28,7 @@ static esp_netif_t *s_netif;
 static QueueHandle_t s_rx;
 static uint8_t s_host[6], s_mac[6];
 static atomic_bool s_connected;
+static int64_t s_console_us;   /* last console RX time; nonzero = a host is attached */
 static int s_pending_baud;
 void ldn_control_apply_baud(void);
 static atomic_uint s_dropped, s_rx_count, s_tx_ok, s_tx_failed, s_air_data;
@@ -59,9 +61,8 @@ void ldn_control_sniff(const unsigned char *frame, size_t length)
         atomic_fetch_add(&s_air_data, 1);
 }
 
-/* Host frames reach the Pico verbatim: both ends speak the same 'GB' framing,
-   so nothing here needs to understand the adapter protocol. */
-/* A line goes out as one message: in binary mode each printf is framed on its own. */
+/* Host frames reach the Pico verbatim; both ends use the same 'GB' framing. */
+/* Builds the hex text so a line is one printf; in binary mode each printf is one frame. */
 static const char *hex_bytes(const uint8_t *bytes, uint8_t count)
 {
     static char text[3 * 24 + 1];
@@ -74,16 +75,15 @@ static const char *hex_bytes(const uint8_t *bytes, uint8_t count)
     return text;
 }
 
-/* Kind 7 from the host. With the adapter on the UART it is a frame for the GB-Link
-   wired to this board; with the adapter on the host port it is a frame from the
-   client's adapter, headed for the bridge. */
+/* Kind 7 from the host. UART port: frame for the wired GB-Link. Host port: frame
+   from the client's adapter, for the bridge. */
 static void host_to_pico(const uint8_t *frame, size_t length)
 {
     if (pico_link_port() == PICO_PORT_HOST) pico_link_feed_host(frame, length);
     else pico_link_write(frame, length);
 }
 
-/* Frames the bridge addressed to the adapter go to the host as kind 6. */
+/* Bridge-to-adapter frames go to the host as kind 6. */
 static void drain_host_adapter(void)
 {
     static uint8_t frame[5 + PICO_LINK_MAX_PAYLOAD];
@@ -110,15 +110,13 @@ void ldn_control_init(esp_netif_t *netif, const unsigned char host[6])
     ESP_ERROR_CHECK(esp_wifi_set_tx_done_cb(tx_done));
     printf("LDN_READY chip=%s transport=%s heap=%" PRIu32 "\n", CONFIG_IDF_TARGET, bridge_transport_name(),
            esp_get_free_heap_size());
-    /* Started at boot rather than by command: a host closing the USB port resets
-       this chip, and the GBA would lose its adapter until the link was restarted.
-       Harmless when no Pico is attached. */
+    /* Started at boot: a host closing the USB port resets this chip, which would
+       otherwise leave the GBA without an adapter. Harmless with no Pico attached. */
     ldn_wire_set_rfu_handler(host_to_pico);
     pico_link_start();
     trade_shim_boot((int)esp_reset_reason());
-    /* Standalone by default: a bridge started by command would not survive the reset
-       a host causes by closing the USB port. LDN_BRIDGE_STOP hands control back for
-       the PC-relay path. */
+    /* Standalone by default, for the same USB-close reset. LDN_BRIDGE_STOP hands
+       control back for the PC-relay path. */
     pia_bridge_start();
 }
 
@@ -154,12 +152,12 @@ static void command(const char *line)
     if (!strncmp(line, "LDN_BEGIN ", 10)) {
         char *end; unsigned long id = strtoul(line + 10, &end, 16);
         if (*end || !id || strlen(line + 10) != 8) { printf("LDN_ERROR INVALID_SESSION\n"); return; }
-        /* A host that owns the radio starts clean. With the bridge running the radio is
-           the bridge's, and a client attaching must not cut the room it is in. */
+        /* Reset the radio only if the host owns it; the bridge's room must survive a
+           client attaching. */
         if (!pia_bridge_running()) ldn_session_stop();
         ldn_wire_session((uint32_t)id); printf("LDN_BEGUN\n"); return;
     }
-    /* The radio commands below belong to a host that runs the session itself. */
+    /* Radio commands for a host that runs the session itself. */
     if (pia_bridge_running() && (!strncmp(line, "LDN_SCAN ", 9) || !strncmp(line, "LDN_CONFIG ", 11) ||
                                  !strcmp(line, "LDN_STOP"))) {
         printf("LDN_ERROR BRIDGE_OWNS_RADIO\n"); return;
@@ -178,15 +176,14 @@ static void command(const char *line)
     }
     if (!strcmp(line, "LDN_STOP")) { ldn_session_stop(); printf("LDN_STOPPED\n"); return; }
     if (!strcmp(line, "LDN_QUIET")) { printf("LDN_QUIET_OK\n"); return; }
-    /* Pico link: the companion board owns the GBA cable and speaks the same
-       framed transport, so this side only starts, stops and counts it. */
+    /* Pico link commands: start, stop and counters only. */
     if (!strcmp(line, "LDN_PICO_START")) {
         ldn_wire_set_rfu_handler(host_to_pico);
         pico_link_start();
         printf("LDN_PICO_STARTED\n"); return;
     }
-    /* Key provisioning: values go straight to NVS and are never echoed, logged or
-       returned; only which names are present is observable. */
+    /* Key provisioning. Values go straight to NVS and are never echoed, logged or
+       returned; only which names are present is visible. */
     if (!strncmp(line, "LDN_KEY ", 8)) {
         char name[40]; char hex[40];
         if (sscanf(line + 8, "%39s %39s", name, hex) != 2 || strlen(hex) != 32) {
@@ -283,8 +280,7 @@ static void command(const char *line)
         s_pending_baud = atoi(line + 9);
         printf("LDN_BAUD_READY %s\n", line + 9); return;
     }
-    /* Where the adapter is: a GB-Link on the UART, or the host standing in for one.
-       The host port exists only in binary mode, which carries kinds 6 and 7. */
+    /* Adapter port: GB-Link on the UART, or the host. Host needs binary mode (kinds 6/7). */
     if (!strcmp(line, "LDN_ADAPTER host") || !strcmp(line, "LDN_ADAPTER uart")) {
         const bool host = line[12] == 'h';
         if (host && !ldn_wire_active()) { printf("LDN_ERROR NOT_BINARY\n"); return; }
@@ -296,7 +292,7 @@ static void command(const char *line)
         printf("LDN_ADAPTER %s\n", pico_link_port() == PICO_PORT_HOST ? "host" : "uart");
         return;
     }
-    /* Identifies the firmware without side effects, unlike LDN_HELLO. */
+    /* Firmware identity, with no side effects (unlike LDN_HELLO). */
     if (!strcmp(line, "LDN_INFO")) {
         printf("LDN_INFO frlg-ldn-bridge %s chip=%s transport=%s\n", BRIDGE_VERSION, CONFIG_IDF_TARGET,
                bridge_transport_name());
@@ -354,6 +350,11 @@ int ldn_control_tx_action(const uint8_t *body, size_t length)
 }
 
 bool ldn_control_connected(void) { return atomic_load(&s_connected); }
+
+int64_t ldn_control_console_age_ms(void)
+{
+    return s_console_us ? (esp_timer_get_time() - s_console_us) / 1000 : INT64_MAX;
+}
 void ldn_control_mac(uint8_t out[6]) { memcpy(out, s_mac, 6); }
 
 static void (*s_action_handler)(const uint8_t source[6], const uint8_t *body, size_t length);
@@ -364,15 +365,14 @@ void ldn_control_set_action_handler(void (*handler)(const uint8_t source[6], con
 
 void ldn_control_poll(void)
 {
-    /* A few lines per pass: printing the whole log at once would block this loop, and
-       the bridge with it, until the console drains. */
+    /* A few lines per pass so the dump does not block the bridge loop. */
     if (s_dumping_log && !trade_shim_dump_step(emit_line, 8)) s_dumping_log = false;
-    /* Queued adapter frames go to the host from this task only: the wire layer
-       serialises through static buffers and the Pico link task runs on another core. */
+    /* Only this task sends adapter frames to the host: the wire layer uses static
+       buffers and the Pico link task runs on another core. */
     if (pico_link_port() == PICO_PORT_HOST) drain_host_adapter();
     else if (ldn_wire_active() && !pia_bridge_running()) {
-        /* Frames queued before the host attached are stale; a replayed WrongCable
-           would abort a healthy session. */
+        /* Drop frames queued before the host attached; a stale WrongCable would
+           abort the session. */
         static bool flushed;
         if (!flushed) { pico_link_reset_inbound(); flushed = true; }
         static uint8_t pico_frame[5 + PICO_LINK_MAX_PAYLOAD];
@@ -399,10 +399,11 @@ void ldn_control_poll(void)
     static char line[3016];
     static size_t used;
     static bool overflow;
-    /* One poll's worth. This runs every millisecond, so even a few hundred bytes a pass
-       outruns anything the console carries; the rest waits in the transport's ring. */
+    /* Per-poll read size. Polled every 1 ms, well above console throughput; the
+       rest waits in the transport ring. */
     static uint8_t bytes[2048];
     int n = bridge_transport_read(bytes, sizeof(bytes));
+    if (n > 0) s_console_us = esp_timer_get_time();
     for (int i = 0; i < n; ++i) {
         if (ldn_wire_active()) { ldn_wire_feed(bytes[i], command); continue; }
         if (bytes[i] == '\r') continue;

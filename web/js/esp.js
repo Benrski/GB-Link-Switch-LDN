@@ -1,11 +1,11 @@
-// A session with the bridge firmware over WebSerial: binary mode, commands with their
-// replies, the adapter frames (kinds 6 and 7), and re-attaching when the firmware
-// restarts itself, which it does whenever a session with the Switch ends.
+// WebSerial session with the bridge firmware: binary mode, commands and replies, adapter
+// frames (kinds 6 and 7), and re-attach after the firmware restarts at the end of every
+// Switch session.
 
 import { KIND, FrameDecoder, buildFrame } from './wire.js';
 import { parseKeyStatus } from './keys.js';
 
-// Native USB Serial/JTAG (S3, C3, C6), then the USB bridges found on ESP32 dev boards.
+// Native USB Serial/JTAG (S3, C3, C6), then dev-board USB-UART bridges (CP210x, CH34x, FTDI).
 export const ESP_FILTERS = [
     { usbVendorId: 0x303a },
     { usbVendorId: 0x10c4 },
@@ -15,16 +15,16 @@ export const ESP_FILTERS = [
 
 const BOOT_BANNER = new TextEncoder().encode('LDN_READY');
 const HANDSHAKE_ATTEMPTS = 4;
-// Text that only a chip on its way up prints: the ROM's banner, the second-stage
-// bootloader's log, and our firmware's own banner. The ROM always prints at 115200, so
-// at our console's rate the bootloader's lines are the first that can be read.
+// Output seen only while the chip boots: ROM banner, 2nd-stage bootloader log, firmware
+// banner. The ROM prints at 115200, so at the console rate bootloader lines are the first
+// readable ones.
 const BOOT_SIGNS = /LDN_READY|ldn_bridge|rst:0x|ESP-ROM:|I \(\d+\) boot:/;
+// Panic output printed before a crash reboot.
+const CRASH_LINES = /^(Guru Meditation Error.*|abort\(\).*|ESP_ERROR_CHECK failed.*|assert failed.*|Backtrace:.*|Stack smashing.*|Task watchdog.*|E \(\d+\) task_wdt.*|Core +\d+ register dump:.*|PC +: .*|.*Interrupt wdt timeout.*)$/gm;
 
-// A chip's own USB port ignores the rate. Behind a USB-UART bridge the firmware's console
-// runs at 921600, which is what carrying the adapter's traffic needs, and a browser cannot
-// change the rate of a port it has open. Firmware from before that, and the chip's ROM,
-// talk at 115200, so that is tried second: it is also where a bootloader's banner becomes
-// readable.
+// Native USB ignores the baud rate. Behind a USB-UART bridge the console runs at 921600,
+// needed for adapter traffic. The browser cannot change an open port's rate, so 115200 is
+// tried second (older firmware, ROM, readable boot banners).
 const NATIVE_VENDOR_ID = 0x303a;
 export const FAST_BAUD = 921600;
 const SLOW_BAUD = 115200;
@@ -37,10 +37,8 @@ function ratesFor(port) {
     return isNativeUsb(port) ? [SLOW_BAUD] : [FAST_BAUD, SLOW_BAUD];
 }
 
-// On Linux a serial port keeps its line settings between programs, and one that was
-// last used by a tool that reads with VMIN=0 (anything built on pyserial, esptool
-// included) makes the browser's first read come back empty, which it reports as a lost
-// device. Replugging the board resets the settings.
+// Linux keeps tty settings between programs. After a VMIN=0 reader (pyserial, esptool) the
+// browser's first read returns empty and is reported as a lost device. Replugging resets it.
 export const PORT_LOST_ADVICE = 'The browser lost the port the moment it opened it. On Linux this happens after another serial program has used the port: unplug the board and plug it back in, then connect again.';
 
 // Whether version string `candidate` is newer than `than` (dotted numbers).
@@ -70,12 +68,13 @@ export class EspDevice extends EventTarget {
         this.attaching = false;
         this.onAdapterFrame = null;   // (Uint8Array) => void, kind 6
         this.bannerTail = new Uint8Array(0);
-        this.heardAt = 0;             // a Switch's room advertisement was received (LDN_ADV)
-        this.readAt = 0;              // and one was decoded (LDN_ROOM)
+        this.recentText = '';         // last few KB as text, for crash reports
+        this.heardAt = 0;             // last room advertisement heard (LDN_ADV)
+        this.readAt = 0;              // last advertisement decoded (LDN_ROOM)
         this.bannerSeen = false;
         this.readEnded = false;
-        this.bootText = '';           // what the chip printed while no session was up
-        this.bootSignAt = 0;          // when it last showed signs of starting up
+        this.bootText = '';           // chip output while not attached
+        this.bootSignAt = 0;          // last time boot output was seen
         this.baudRate = 0;
     }
 
@@ -117,11 +116,10 @@ export class EspDevice extends EventTarget {
         this.readEnded = false;
         this.bootText = '';
         this.readLoop();
-        // On a dev board DTR and RTS work the chip's boot-select and reset pins, and the
-        // operating system asserts both while opening. Released, they leave the chip
-        // alone when the port closes as well. Reset is RTS without DTR, and a USB-UART
-        // chip moves the two pins one after the other, so RTS has to go first there;
-        // a chip with USB of its own takes both in one request.
+        // On dev boards DTR/RTS drive boot-select and reset, and the OS asserts both on open.
+        // Releasing them also keeps the chip untouched on close. Reset is RTS without DTR, and
+        // USB-UART chips change the pins one at a time, so RTS goes first. Native USB takes
+        // both in one request.
         try {
             if (isNativeUsb(port)) await port.setSignals({ dataTerminalReady: false, requestToSend: false });
             else {
@@ -131,8 +129,8 @@ export class EspDevice extends EventTarget {
         } catch {}
     }
 
-    // Binary mode, a session id, and who we are talking to. Opening the port can reset
-    // the chip, so the handshake is retried until the firmware has had time to boot.
+    // Binary mode, session id, device info. Opening the port can reset the chip, so the
+    // handshake is retried until the firmware has booted.
     async attach(lastChance = true) {
         this.attached = false;
         this.attaching = true;
@@ -143,15 +141,14 @@ export class EspDevice extends EventTarget {
                 const justBooted = this.bannerSeen;
                 this.bannerSeen = false;
                 await sleep(attempt === 0 || justBooted ? 150 : 600);
-                // Gone before it said anything is the operating system's doing. Gone after
-                // printing is the chip's: one with nothing to run restarts every few
-                // seconds, and its own USB port drops off the bus each time.
+                // Port lost before any output: OS problem. Lost after output: the chip, e.g.
+                // one with nothing to run restarts every few seconds and its native USB drops.
                 if (this.readEnded) throw this.bootText ? this.silenceExplained() : Object.assign(new Error(PORT_LOST_ADVICE), { code: 'port-lost' });
                 await this.writeRaw(new TextEncoder().encode('\nLDN_BINARY\n\0'));
                 await sleep(200);
                 const lines = await this.command('LDN_HELLO', 700, true);
                 hello = lines.find((line) => line.startsWith('LDN_HELLO')) ?? null;
-                if (this.bannerSeen) hello = null;   // it rebooted under us: go again
+                if (this.bannerSeen) hello = null;   // rebooted mid-handshake, retry
                 if (!hello && !this.worthAnotherTry(attempt, lastChance)) break;
             }
             if (!hello) throw this.silenceExplained();
@@ -167,31 +164,27 @@ export class EspDevice extends EventTarget {
         this.dispatchEvent(new CustomEvent('attached', { detail: this.info }));
     }
 
-    // Running firmware answers within milliseconds, so waiting only makes sense while
-    // the chip is visibly starting up (opening the port can reset it). Anything that
-    // proves a different program, a bootloader or a crash ends the wait at once; plain
-    // silence gets one more try, and only at the last rate there is to try.
+    // Running firmware answers within milliseconds, so keep waiting only while the chip is
+    // visibly booting. Other firmware, a bootloader or a crash stop at once. Plain silence
+    // gets one more try, only at the last rate.
     worthAnotherTry(attempt, lastChance) {
         const text = this.bootText;
         if (/waiting for download|invalid header|No bootable app|ESP_ERROR_CHECK failed|abort\(\) was called|Guru Meditation/i.test(text)) return false;
         const project = text.match(/Project name:\s+(\S+)/)?.[1];
         if (project && !project.startsWith('ldn_bridge')) return false;
-        // Starting up, as long as that was recent: our firmware answers about a second
-        // after the reset, and whatever else prints a boot log never will.
+        // Recent boot output only: this firmware answers ~1 s after reset, other firmware never.
         if (BOOT_SIGNS.test(text)) return Date.now() - this.bootSignAt < 3000;
         return lastChance && attempt === 0 && text.length === 0;
     }
 
-    // Nothing answered the handshake. What the chip printed meanwhile often says why: a
-    // ROM bootloader waiting for a download, or firmware that aborts as it starts and
-    // restarts, which from outside is just as silent.
+    // Explains a failed handshake from the chip's output: ROM download mode, or firmware that
+    // aborts at start-up and restarts (equally silent from outside).
     silenceExplained() {
         const text = this.bootText;
         if (/waiting for download/i.test(text)) {
             return Object.assign(new Error('The chip is sitting in its bootloader.'), { code: 'download-mode' });
         }
-        // Nothing to start: the ROM finds no bootloader or the bootloader no application,
-        // and the chip restarts for ever. Looks like a crash loop, but it is an empty board.
+        // No bootloader or no app: an empty board restarting endlessly, not a crash loop.
         if (/invalid header|No bootable app/i.test(text)) {
             return Object.assign(new Error('No bridge firmware answered on this port.'), { code: 'no-firmware' });
         }
@@ -220,36 +213,40 @@ export class EspDevice extends EventTarget {
                 if (!this.attached) {
                     const text = new TextDecoder().decode(value);
                     this.bootText = (this.bootText + text).slice(-16384);
-                    // With some of what came before, for a sign split across two reads.
+                    // Includes earlier text so a sign split across reads is found.
                     if (BOOT_SIGNS.test(this.bootText.slice(-(text.length + 32)))) this.bootSignAt = Date.now();
                 }
                 this.watchForReboot(value);
-                // A frame this page mishandles is not the port failing: keep reading, or
-                // the board would look unplugged.
+                // A page error on one frame is not a port failure. Keep reading, or the
+                // board would look unplugged.
                 for (const frame of this.decoder.push(value)) {
                     try { this.handleFrame(frame); }
                     catch (error) { this.dispatchEvent(new CustomEvent('log', { detail: `page: ${error?.message ?? error}` })); }
                 }
             }
         } catch {
-            // The port went away, or close() cancelled the read.
+            // Port gone, or close() cancelled the read.
         }
         this.readEnded = true;
         if (reader === this.reader) this.dispatchEvent(new Event('disconnected'));
     }
 
-    // A software restart leaves the USB port open, so the boot banner is the only sign
-    // that the chip is back in text mode and needs the handshake again.
+    // A software restart keeps the USB port open. The boot banner is the only sign the chip
+    // is back in text mode and needs a new handshake.
     watchForReboot(chunk) {
+        this.recentText = (this.recentText + new TextDecoder().decode(chunk)).slice(-6144);
         const joined = new Uint8Array(this.bannerTail.length + chunk.length);
         joined.set(this.bannerTail, 0);
         joined.set(chunk, this.bannerTail.length);
         this.bannerTail = joined.slice(Math.max(0, joined.length - (BOOT_BANNER.length - 1)));
         if (indexOf(joined, BOOT_BANNER) < 0) return;
         this.bannerSeen = true;
-        if (this.attaching) this.finishPending();   // sent before it was up: no answer is coming
+        if (this.attaching) this.finishPending();   // sent before boot, no reply coming
         if (!this.attached || this.attaching) return;
         this.attached = false;
+        const report = this.recentText.match(CRASH_LINES);
+        this.recentText = '';
+        if (report) this.dispatchEvent(new CustomEvent('log', { detail: `the board crashed: ${report.map((l) => l.trim()).join(' | ')}` }));
         this.dispatchEvent(new Event('restarted'));
         sleep(1200)
             .then(() => this.attach())
@@ -280,15 +277,15 @@ export class EspDevice extends EventTarget {
         if (text && text !== 'LDN_DONE') this.dispatchEvent(new CustomEvent('log', { detail: text }));
     }
 
-    // Advertisements keep arriving (four a second while a room is up) but none decodes:
-    // the board hears a room its keys cannot read.
+    // Advertisements arrive (4/s while a room is up) but none decode: the stored keys cannot
+    // read this room.
     get hearsUnreadableRoom() {
         const now = Date.now();
         return now - this.heardAt < 5000 && now - this.readAt > 10000;
     }
 
-    // The Switch's signal over the last few seconds, in dBm, or null when its room was
-    // not heard. Firmware before 2.0.2 counted every wireless frame in this reading.
+    // Switch signal in dBm over the last few seconds, or null if its room was not heard.
+    // Skipped before 2.0.2, which counted every wireless frame.
     async signal() {
         if (!this.info || newer('2.0.2', this.info.version)) return null;
         const lines = await this.command('LDN_RF', 1500);
@@ -296,9 +293,8 @@ export class EspDevice extends EventTarget {
         return match && Number(match[1]) > 0 ? Number(match[2]) : null;
     }
 
-    // One request at a time, as the protocol requires. Resolves with the reply lines,
-    // which are whatever arrived if the device never finished the reply. Until the
-    // handshake is done only the handshake itself may talk.
+    // One request at a time, per protocol. Resolves with the reply lines, or whatever arrived
+    // before the timeout. Before attach only handshake commands may run.
     command(text, timeoutMs = 2000, handshake = false) {
         const run = () => new Promise((resolve, reject) => {
             if (!this.writer) { reject(new Error('Not connected')); return; }
@@ -326,7 +322,7 @@ export class EspDevice extends EventTarget {
         pending.resolve(pending.lines);
     }
 
-    // Bytes from the adapter, headed for the bridge (kind 7).
+    // Adapter bytes to the bridge (kind 7).
     sendAdapter(bytes) {
         if (!this.attached) return;
         this.writeRaw(buildFrame(KIND.ADAPTER_IN, 0, this.session, bytes)).catch(() => {});
@@ -343,8 +339,8 @@ export class EspDevice extends EventTarget {
         return line ? parseKeyStatus(line) : null;
     }
 
-    // keys: { name: 32 hex digits }. The firmware stores them in flash and never sends
-    // them back; only which names are present can be read.
+    // keys: { name: 32 hex digits }. Stored in flash and never read back. Only presence
+    // can be queried.
     async storeKeys(keys) {
         const rejected = [];
         for (const [name, value] of Object.entries(keys)) {
@@ -359,7 +355,7 @@ export class EspDevice extends EventTarget {
         return lines.includes('LDN_KEYS_ERASED');
     }
 
-    // A board with no keys stops looking for rooms the first time it finds one.
+    // Without keys the board stops scanning at the first room found; this restarts it.
     async startBridge() {
         await this.command('LDN_BRIDGE_START');
     }
@@ -386,7 +382,7 @@ export class EspDevice extends EventTarget {
         return lines.includes(`LDN_ADAPTER ${where}`);
     }
 
-    // Closes the port and hands it back, for the flasher or for opening again.
+    // Closes the port and returns it, for the flasher or reopening.
     async close() {
         const port = this.port;
         const reader = this.reader;
@@ -404,8 +400,8 @@ export class EspDevice extends EventTarget {
     }
 }
 
-// After a reset the board may drop off the bus and come back as a new port object with
-// the same permission. Tries the port we had, then any granted port of the same kind.
+// After a reset the board can re-enumerate as a new port object with the same permission.
+// Tries the previous port first, then any granted port with the same VID/PID.
 export async function reopenPort(previous, attempts = 12) {
     const wanted = safeInfo(previous);
     for (let attempt = 0; attempt < attempts; attempt++) {
@@ -424,7 +420,7 @@ export async function reopenPort(previous, attempts = 12) {
                 return device;
             } catch (error) {
                 await device.close();
-                if (error.code !== 'port-busy') throw error;   // else not back yet, or a stale entry
+                if (error.code !== 'port-busy') throw error;   // otherwise not back yet, or stale
             }
         }
     }

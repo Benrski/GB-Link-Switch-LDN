@@ -39,13 +39,12 @@ public sealed class GbLinkMonitor(GbLinkDevice device, Action<string> log)
     }
 }
 
-// Real GBA (GB-Link wireless mode) joining a Switch FireRed Leader room: the LDN session is joined up front,
-// the GBA sees the Leader as a broadcast, its connect becomes the WC request, and adapter payloads relay
-// verbatim both ways.
+// Real GBA (GB-Link wireless mode) joining a Switch FireRed leader room. The LDN session is joined first;
+// the GBA sees the leader as a broadcast, its connect becomes the WC request, and adapter payloads are
+// relayed verbatim.
 public sealed class SwitchBridge(Action<string> log)
 {
-    // Names for the link commands worth calling out live, so a session can be correlated against what
-    // the games are showing on screen.
+    // Link commands logged by name, to correlate the log with the games' screens.
     private static readonly Dictionary<int, string> Milestones = new()
     {
         [0xaabb] = "Ready (mon selected)", [0xdddd] = "SetMons", [0xbbbb] = "InitBlock",
@@ -61,7 +60,7 @@ public sealed class SwitchBridge(Action<string> log)
         return Milestones.TryGetValue(cmd, out var name) ? name : null;
     }
 
-    // Set once the session has torn down (LDN_STOP sent), so a signal handler can wait for a clean exit.
+    // Set after teardown (LDN_STOP sent); lets a signal handler wait for a clean exit.
     public static volatile bool ShutdownComplete;
 
     public void Run(string ldnPort, string? gblinkPort, string? leaderName, string runPath, CancellationToken cancel)
@@ -72,10 +71,9 @@ public sealed class SwitchBridge(Action<string> log)
         using var rfuLog = new StreamWriter(Path.Combine(runPath, "rfu1.log")) { AutoFlush = true };
         void Record(string text) { native.WriteLine($"{DateTimeOffset.Now:O} {text}"); log(text); }
         var keys = KeyFile.LoadDefault();
-        // With no GB-Link port of its own the adapter is wired to the LDN device instead, and its
-        // frames ride that link as kinds 6/7. That device also owns wireless-mode entry: it boots
-        // independently of this host, and the GBA only probes for an adapter at power-on, so
-        // re-entering the mode from here would strand a GBA that had already found it.
+        // No GB-Link port: the adapter is on the LDN device and its frames use kinds 6/7. That device
+        // also owns wireless-mode entry. The GBA probes for an adapter only at power-on, so re-entering
+        // the mode here would strand it.
         bool tunnelled = string.IsNullOrEmpty(gblinkPort);
         using var device = new SerialDevice(ldnPort, cancel);
         using var gblink = tunnelled ? new GbLinkDevice(device.SendRfu) : new GbLinkDevice(gblinkPort!);
@@ -93,8 +91,7 @@ public sealed class SwitchBridge(Action<string> log)
                 device.Handshake(); started = true; Record($"LDN device: {device.Model}");
             }
             var info = gblink.FirmwareInfo(); Record(info == null ? "GB-Link: no firmware info reply" : $"GB-Link firmware {info[1]}.{info[2]}.{info[3]}");
-            // Wait for the room rather than racing a timer: the GBA side is already live, so the user can
-            // host on the Switch whenever they are ready.
+            // No timeout: the GBA side is live, so the Switch can host at any time.
             Record("Waiting for the Switch to host a FireRed Leader room");
             LdnNetwork? network = null;
             for (int pass = 1; network == null; pass++)
@@ -181,8 +178,7 @@ public sealed class SwitchBridge(Action<string> log)
                                 var note = Describe(payload.AsSpan(2));
                                 if (note != null) Record($"{now,7:F3} GBA -> {note}");
                             }
-                            // "Real" means a game command: the child's idle frame still carries its 0e10
-                            // header, so testing the whole payload counts idle as traffic.
+                            // Skip the 2-byte 0e10 header, which idle frames also carry.
                             if (payload.Length > 2 && payload.AsSpan(2).ToArray().Any(b => b != 0)) lastChildTraffic = now;
                             relay.Enqueue(payload);
                             if (childFrames <= 40 && !payload.All(b => b == 0)) Record($"{now,7:F3} GBA -> {Convert.ToHexString(payload)} {LeaderBridge.DescribeNi(payload)}");
@@ -204,7 +200,7 @@ public sealed class SwitchBridge(Action<string> log)
                 }
                 if (now >= nextBeacon) { gblink.SendData(Rfu1.Bcast(leaderDevid, (byte)(childConnected ? 1 : 0), beacon)); nextBeacon = now + 0.5; }
                 if (now >= nextTick) { relay.Tick(); nextTick = now + 1 / 59.727; }
-                // Call out a stalled GBA as it happens: this is the window in which the Switch gives up on it.
+                // Log a stalled GBA; the Switch drops it during this window.
                 if (childConnected && lastChildTraffic > 0 && now - lastChildTraffic > 2 && now - silenceReported > 5)
                 {
                     silenceReported = now;
@@ -215,8 +211,8 @@ public sealed class SwitchBridge(Action<string> log)
                     Record($"{now,7:F3} summary connected={childConnected} pia rx={relay.ReceivedPackets} tx={relay.SentPackets} decryptFailed={relay.DecryptFailures} host->gba={hostFrames} gba->host={childFrames} queued={relay.Pending} highWater={relay.HighWater} repeated={relay.Repeated} overflow={relay.Overflow} reordered={relay.Reordered} holding={relay.Resequencing} clientAcks={monitor.ClientAcks} serialBad={device.BadFrames}/{gblink.BadFrames}");
                     nextSummary = now + 5;
                 }
-                // Only guard against silence once the GBA is actually in session: before that the Switch
-                // may legitimately sit quiet for as long as it takes to walk the GBA through its menus.
+                // Silence timeout only once connected; before that the Switch may stay quiet while the
+                // player navigates menus.
                 if (childConnected && now - lastReceive > 30) throw new ConnectionException("Host communication timed out; the connection was closed.");
                 Thread.Sleep(1);
             }

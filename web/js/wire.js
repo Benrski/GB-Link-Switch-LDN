@@ -1,5 +1,4 @@
-// The bridge firmware's console protocol, as docs/SERIAL_PROTOCOL.md describes it:
-// COBS-framed messages ending in 0x00, each
+// Bridge firmware console protocol (docs/SERIAL_PROTOCOL.md). COBS frames terminated by 0x00:
 //   version:1 | kind:1 | request:4 LE | session:4 LE | length:2 LE | payload | crc32:4 LE
 
 export const KIND = {
@@ -80,8 +79,8 @@ export function buildFrame(kind, request, session, payload) {
     return framed;
 }
 
-// Splits a byte stream on 0x00 and yields the frames that pass every check. Anything
-// else (boot text, a torn frame) is dropped, as the firmware does on its side.
+// Splits a byte stream on 0x00 and returns frames that pass all checks. Boot text and torn
+// frames are dropped, as in the firmware.
 export class FrameDecoder {
     constructor() {
         this.pending = [];
@@ -114,8 +113,7 @@ export class FrameDecoder {
     }
 }
 
-// GB-Link frames: 'G' 'B' | channel:1 | length:2 LE | payload. Channel 0 carries
-// commands, 1 data, 2 status.
+// GB-Link frame: 'G' 'B' | channel:1 | length:2 LE | payload
 export const GB_CHANNEL = { COMMAND: 0, DATA: 1, STATUS: 2 };
 
 export function buildGbFrame(channel, payload) {
@@ -129,7 +127,7 @@ export function buildGbFrame(channel, payload) {
     return frame;
 }
 
-// A GB-Link frame stream need not arrive frame-aligned.
+// Incremental parser; input need not be frame-aligned.
 export class GbFrameParser {
     constructor(maxPayload = 512) {
         this.maxPayload = maxPayload;

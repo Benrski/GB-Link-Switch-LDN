@@ -8,8 +8,8 @@ esp_err_t ldn_session_scan(unsigned channel);
 void ldn_session_stop(void);
 void ldn_control_target(const unsigned char host[6]);
 
-/* Strength of the last LDN action frame heard, and min/avg/max since the last call. */
+/* RSSI of the last LDN action frame, and min/avg/max since the previous call. */
 int8_t ldn_probe_last_rssi(void);
 void ldn_probe_rssi_window(int *count, int *average, int *low, int *high);
-/* Select the external (true) or onboard antenna; false if the board has no switch. */
+/* External (true) or onboard antenna. Returns false if the board has no switch. */
 bool bridge_board_antenna(bool external);

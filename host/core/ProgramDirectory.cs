@@ -1,12 +1,12 @@
 namespace Frlg.Trade.Core;
 
-// An AppImage runs from a read-only mount, so its files go next to the AppImage file instead.
+// AppImages run from a read-only mount, so program files go next to the AppImage file.
 public static class ProgramDirectory
 {
     public static string Path { get; } = Find(AppContext.BaseDirectory,
         Environment.GetEnvironmentVariable("APPIMAGE"), Environment.GetEnvironmentVariable("APPDIR"));
 
-    // Child processes inherit APPIMAGE and APPDIR, so they only count when this program runs from that mount.
+    // APPIMAGE/APPDIR are inherited by child processes; use them only when running from that mount.
     public static string Find(string baseDirectory, string? appImage, string? appDir)
     {
         bool mounted = !string.IsNullOrEmpty(appImage) && !string.IsNullOrEmpty(appDir) &&

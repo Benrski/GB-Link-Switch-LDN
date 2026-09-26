@@ -60,8 +60,8 @@ public sealed class ReliableLink
     }
     public void Receive(int seq, int? advertisedLow = null)
     {
-        // Each peer chooses its own starting sequence. Use its send-window base,
-        // not the first packet's sequence, so an out-of-order arrival retains gaps.
+        // Start from the peer's send-window base, not the first packet's sequence, so an
+        // out-of-order first arrival keeps its gap.
         if (!receiveStarted)
         {
             if (advertisedLow.HasValue) ReceiveNext = advertisedLow.Value;
@@ -115,7 +115,7 @@ public sealed class PiaCrypto(byte[] ssid) : IDisposable
     public byte[] Decompress(byte[] data)
     {
         if (data.Length < 4 || Bin.U32(data) != 0xfd2fb528) return data;
-        // Pia may append footer/padding after the zstd frame. The stream stops at frame completion.
+        // Pia may append padding after the zstd frame; decoding stops at the frame end.
         using var stream = new DecompressionStream(new MemoryStream(data));
         using var output = new MemoryStream(); var chunk = new byte[4096];
         while (true)

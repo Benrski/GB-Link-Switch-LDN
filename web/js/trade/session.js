@@ -1,10 +1,8 @@
-// A visit to the Switch's trade room, with the board doing the wireless. The page asks
-// to be the board's adapter, then plays the second game: the board finds the room, joins
-// it and decrypts everything, and this side only answers the frames it passes on.
+// One session in the Switch's trade room. The page takes over the board's adapter link
+// (LDN_ADAPTER host) and plays the second game; the board finds, joins and decrypts the room.
 //
-// The Pokémon on offer are either the player's own or, with a pool, whatever the trade
-// pool hands out: the Switch's choice goes to the pool in exchange, and leaving the
-// menu and sitting down again brings a different one.
+// Offers come from the player's party or, with a pool, from the trade pool. The Switch's
+// Pokémon goes to the pool; re-seating fetches a new pool Pokémon.
 
 import { ConnectionError } from './bytes.js';
 import { GB_CHANNEL, GbFrameParser } from '../wire.js';
@@ -14,10 +12,10 @@ import { TradeEngine } from './engine.js';
 import { Pk3 } from './pk3.js';
 import { PoolError, poolRecord } from './pool.js';
 
-const SILENT_S = 30;          // connected, but the Switch has stopped sending
-const POLL_MS = 1000;         // how often the board is asked what it is doing
-const POOL_PATIENCE_MS = 8000;   // how long the party is held back for the pool's next Pokémon
-const FIRST_TRIES = 3;        // for the pool's first Pokémon, without which there is no party
+const SILENT_S = 30;          // max silence from the Switch while connected
+const POLL_MS = 1000;         // board status poll interval
+const POOL_PATIENCE_MS = 8000;   // timeout for each pool request
+const FIRST_TRIES = 3;        // attempts to fetch the first pool Pokémon
 const MAIL_SIZE = 36;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -26,7 +24,7 @@ export class CancelledError extends Error {
 }
 
 export class TradeSession {
-    // party and selected are the player's own; with a pool they are not used.
+    // party and selected are ignored when a pool is given.
     constructor({ device, party = null, selected = 0, emit, pool = null }) {
         this.device = device;
         this.emit = emit;
@@ -34,10 +32,10 @@ export class TradeSession {
         this.party = party;
         this.selected = selected;
         this.engine = null;
-        this.poolMon = null;          // what the pool is offering: { record, wire, pk, mail }
-        this.given = null;            // the Switch's Pokémon the pool has agreed to take
+        this.poolMon = null;          // pool offer: { record, wire, pk, mail }
+        this.given = null;            // Switch's Pokémon proposed to the pool
         this.poolBusy = Promise.resolve();
-        this.poolAsked = false;       // the pool's first Pokémon has been asked for
+        this.poolAsked = false;       // first pool Pokémon requested
         this.poolLost = false;
         this.declineRequested = false;
         this.offerRequested = -1;
@@ -52,9 +50,8 @@ export class TradeSession {
 
     async run(signal) {
         const device = this.device;
-        // The pool is reached before the board is asked for anything, so a pool that is
-        // down costs nothing. No Pokémon is taken from it yet: one that is on offer to
-        // this connection is kept from everyone else.
+        // Connect to the pool before touching the board. Fetch no Pokémon yet: an offered
+        // Pokémon is reserved for this connection.
         if (this.pool) {
             this.phase('Reaching the trade pool');
             await this.pool.connect();
@@ -90,8 +87,7 @@ export class TradeSession {
             if (!reply.includes('LDN_ADAPTER host')) throw new ConnectionError('The board would not hand over its adapter link. Install the firmware in step 1 and try again.');
             taken = true;
             this.emit({ event: 'device', model: device.info?.chip, firmware: device.info?.version });
-            // Frames arrive as the board sends them, so the page answers at the link's
-            // own pace instead of keeping a clock of its own.
+            // Driven by incoming frames; no local clock.
             device.onAdapterFrame = (payload) => {
                 try {
                     for (const frame of gb.push(payload)) {
@@ -107,8 +103,8 @@ export class TradeSession {
             this.pool?.close();
             if (taken) {
                 try { link.leave(); } catch {}
-                // The board's own bridge takes its link back, unless it is restarting,
-                // which it does by itself once the Switch has left the room.
+                // Return the link to the board's bridge. Fails if the board is already
+                // restarting after the Switch left the room.
                 try { await device.command('LDN_ADAPTER uart', 2000); } catch (error) { this.log(`The board did not take its adapter link back: ${error.message}`); }
             }
         }
@@ -122,7 +118,7 @@ export class TradeSession {
         while (!link.disconnected) {
             if (signal?.aborted) throw new CancelledError();
             if (this.failure) throw this.failure;
-            // The board restarts itself when a room ends; that is the visit finishing.
+            // The board restarts when the room ends.
             if (!device.attached) { this.log('The board is restarting, which it does when the room ends.'); break; }
             if (this.declineRequested) { this.declineRequested = false; engine.decline(); }
             if (this.offerRequested >= 0) {
@@ -130,9 +126,8 @@ export class TradeSession {
                 this.offerRequested = -1;
                 this.emit({ event: 'offer', slot, taken: engine.offer(slot) });
             }
-            // The two games have introduced themselves, which they do once the player on
-            // the Switch has let this one into the group. The trade table is still a walk
-            // away, so the pool's Pokémon is there before the parties are exchanged.
+            // Established once the Switch player admits this side to the group, well before
+            // the party exchange, so the first pool Pokémon arrives in time.
             if (this.pool && !this.poolAsked && engine.established) { this.poolAsked = true; this.firstFromPool(signal); }
             if (this.pool?.closed && this.poolAsked && !this.poolLost) this.poolDropped(signal);
             const now = seconds();
@@ -148,7 +143,7 @@ export class TradeSession {
         }
     }
 
-    // What the board says it is doing, until the games take over the story.
+    // Status line from the board until the link connects.
     async describe(link) {
         let status = null;
         try { status = await this.device.bridgeStatus(); } catch { return null; }
@@ -164,8 +159,7 @@ export class TradeSession {
 
     // ---- the trade pool
 
-    // One thing at a time with the pool: its answers are counted, so two conversations
-    // at once would take each other's.
+    // Serialises pool requests; replies are matched by order.
     poolStep(work) {
         const step = this.poolBusy.then(work);
         this.poolBusy = step.catch(() => {});
@@ -178,8 +172,8 @@ export class TradeSession {
         this.emit({ event: 'pool_mon', pk3: wire });
     }
 
-    // Without a first Pokémon there is no party to show the Switch, so the party stays
-    // held back through a few tries and the visit ends if none of them brings one.
+    // No party without a first Pokémon: keep the party held, retry FIRST_TRIES times,
+    // then fail the session.
     firstFromPool(signal) {
         return this.poolStep(async () => {
             for (let attempt = 1; ; attempt++) {
@@ -203,8 +197,7 @@ export class TradeSession {
         });
     }
 
-    // The Switch has chosen: the pool says whether it will take that Pokémon, and only
-    // then is the trade confirmed.
+    // Asks the pool to accept the Switch's choice before confirming the trade.
     consultPool(cursor, signal) {
         const engine = this.engine;
         return this.poolStep(async () => {
@@ -224,8 +217,8 @@ export class TradeSession {
         });
     }
 
-    // The games have traded: the pool is told, and its next Pokémon takes the place of
-    // the one that went. The party is held back until it has arrived.
+    // Reports the completed trade to the pool and loads its next Pokémon. The party is held
+    // until it arrives.
     sealWithPool(received, signal) {
         const given = this.given, taken = this.poolMon;
         this.engine.holdParty();
@@ -234,22 +227,20 @@ export class TradeSession {
             try { sealed = await this.pool.complete(new Pk3(given.wire), taken.pk, deadline(signal, POOL_PATIENCE_MS)); }
             catch (error) { this.log(`Trade pool: ${error.message}`); }
             this.emit({ event: 'pool_traded', gave: received, got: taken.wire, sealed });
-            // A swap the pool did not seal leaves it offering the Pokémon that has just
-            // gone to the Switch, which only a new connection changes.
+            // Unsealed: the pool still offers the traded Pokémon until reconnecting.
             await this.nextPoolMon(signal, !sealed);
         });
     }
 
-    // A different Pokémon from the pool, which only a finished trade or a new connection
-    // brings. The Switch sees it the next time the parties are exchanged, and that
-    // exchange waits for it.
+    // Fetches a new pool Pokémon (the pool only changes it after a trade or a reconnect).
+    // The next party exchange waits for it.
     replaceFromPool(signal, reconnect) {
         this.engine.holdParty();
         return this.poolStep(() => this.nextPoolMon(signal, reconnect));
     }
 
     async nextPoolMon(signal, reconnect) {
-        if (!this.poolMon) return;   // the first one never came, and the visit is ending
+        if (!this.poolMon) return;   // first fetch failed; session is ending
         try {
             const limit = deadline(signal, POOL_PATIENCE_MS);
             if (reconnect || this.pool.closed) await this.pool.connect();
@@ -266,8 +257,8 @@ export class TradeSession {
         }
     }
 
-    // The pool's connection has gone, and with it the hold on the Pokémon on show. A
-    // menu that is open keeps showing it, so that one has to be left first.
+    // Pool disconnected, so the shown Pokémon is no longer reserved. An open menu keeps
+    // showing it until the player leaves.
     poolDropped(signal) {
         this.poolLost = true;
         const engine = this.engine;
@@ -279,7 +270,7 @@ export class TradeSession {
     }
 }
 
-// An abort signal that also fires after a while, for steps that must not hold the games up.
+// Abort signal that also fires after ms.
 function deadline(signal, ms) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ms);

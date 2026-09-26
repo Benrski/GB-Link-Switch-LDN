@@ -1,10 +1,8 @@
-// The wireless adapter's own frames, as the board's bridge speaks them to whatever is
-// playing the adapter. The board runs the room, decrypts everything and hands over
-// these plain frames, so nothing here needs a key.
+// Wireless adapter frames exchanged with the board's bridge. The board runs the room and
+// decrypts all traffic, so no keys are needed here.
 //
-// A frame is "RFU1", a 4-byte type and a 4-byte header, both big-endian, then its
-// payload. Sizes are fixed per type. They travel as GB-Link data frames in 64-byte
-// pieces, and a receiver resynchronises on the magic.
+// Frame: "RFU1", 4-byte type, 4-byte header (both big-endian), payload. Size is fixed per type.
+// Sent as 64-byte GB-Link data frames; the reader resyncs on the magic.
 
 import { b32, join, wb32 } from './bytes.js';
 import { GB_CHANNEL, buildGbFrame } from '../wire.js';
@@ -13,12 +11,12 @@ const MAGIC = Uint8Array.of(0x52, 0x46, 0x55, 0x31);
 const CHUNK = 64;
 
 export const RFU = {
-    BROADCAST: 0,     // the board offers a room
-    CONNECT_REQ: 1,   // this side asks to join one
-    CONNECT_ACK: 2,   // the board takes it in
+    BROADCAST: 0,     // room offered by the board
+    CONNECT_REQ: 1,   // join request
+    CONNECT_ACK: 2,   // join accepted
     DISCONNECT: 4,
-    HOST_SEND: 5,     // a frame from the game on the Switch
-    CLIENT_SEND: 6,   // a frame from the game this page plays
+    HOST_SEND: 5,     // frame from the Switch's game
+    CLIENT_SEND: 6,   // frame from this side's game
 };
 
 export function frameSize(type) {
@@ -35,7 +33,7 @@ export function command(type, header) {
     return frame;
 }
 
-// The board reads this side's length from the top byte of the header.
+// Payload length goes in the header's top byte.
 export function clientFrame(payload) {
     const frame = new Uint8Array(104);
     frame.set(MAGIC);
@@ -45,13 +43,13 @@ export function clientFrame(payload) {
     return frame;
 }
 
-// The board's own length sits in the low bits of the header.
+// Payload length is in the header's low 7 bits.
 export function hostPayload(frame) {
     const length = Math.min(b32(frame, 8) & 0x7f, 92);
     return frame.subarray(12, 12 + length);
 }
 
-// Whole frames out of a stream that arrives in pieces and may be padded.
+// Reassembles whole frames from a chunked, possibly padded stream.
 export class FrameReader {
     constructor() {
         this.buffer = new Uint8Array(0);
@@ -79,8 +77,8 @@ function startsWithMagic(bytes, at) {
     return true;
 }
 
-// One frame as the GB-Link data frames the board expects: 64 bytes at a time, the last
-// piece padded, because a shorter piece is read as the adapter's own telemetry.
+// Splits a frame into 64-byte GB-Link data frames. The last piece is padded; the board
+// treats a shorter piece as adapter telemetry.
 export function toGbFrames(frame) {
     const pieces = [];
     for (let at = 0; at < frame.length; at += CHUNK) {

@@ -24,3 +24,5 @@ int uart_set_pin(int uart, int tx, int rx, int rts, int cts);
 int uart_read_bytes(int uart, void *buffer, uint32_t length, TickType_t wait);
 int uart_write_bytes(int uart, const void *bytes, size_t length);
 int uart_wait_tx_done(int uart, TickType_t wait);
+typedef struct { uint32_t intr_enable_mask; uint8_t rx_timeout_thresh, txfifo_empty_intr_thresh, rxfifo_full_thresh; } uart_intr_config_t;
+int uart_intr_config(int uart, const uart_intr_config_t *config);
