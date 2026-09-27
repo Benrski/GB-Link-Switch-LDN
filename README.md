@@ -5,7 +5,8 @@ Game Boy Advance or from your PC.
 
 - **GBA to Switch.** A GBA running FireRed, LeafGreen or Emerald joins the Switch's
   Trade Center or Colosseum over the Switch's own local wireless, as if it were another
-  Switch. Trades and battles.
+  Switch. Trades and battles. Ruby and Sapphire, which have no wireless, trade too: the
+  web page links them by cable and turns that link into the Switch's wireless.
 - **PC to Switch.** Only have a Switch? All you need is an ESP32 board, no GBA and no
   GB-Link. Trade with the Switch from the web page, from an online Wonder Trade pool or
   from your own `.pk3` files.
@@ -76,6 +77,14 @@ is ready again about ten seconds later.
 
 It also works the other way round: lead the group on the GBA, then join it from the
 Switch.
+
+### Ruby and Sapphire
+
+Pick *Ruby, Sapphire* in the Play step and press *Start*, with both boards on USB. Lead a
+Trade Center group on the Switch, then on the GBA talk to the attendant at the middle
+counter upstairs in a Pokémon Center and choose to trade. The page joins the Switch's
+group once the GBA has linked; accept the join on the Switch. Trades only, and the Switch
+always leads.
 
 ### PC to Switch
 

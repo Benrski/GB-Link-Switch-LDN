@@ -15,6 +15,7 @@ export const COMMAND = {
     WIRELESS_STATS: 0x4c,
 };
 
+export const MODE_CABLE_LINK = 0x01;
 export const MODE_WIRELESS_ADAPTER = 0x07;
 
 const ENDPOINT_SIZE = 64;
@@ -23,6 +24,7 @@ class GbLinkBase extends EventTarget {
     constructor() {
         super();
         this.onBytes = null;       // (Uint8Array) => void, GB-Link frames from the adapter
+        this.onFrame = null;       // (channel, payload) => void, every frame; the cable mode reads these
         this.waiters = [];         // requests awaiting a data-channel reply
         this.resets = [];          // { at, count } samples, last 10 s
         this.resetLoop = false;
@@ -66,6 +68,7 @@ class GbLinkBase extends EventTarget {
     }
 
     deliver(channel, payload) {
+        this.onFrame?.(channel, payload);
         if (channel !== GB_CHANNEL.DATA || payload.length === 0) return;
         // Wireless-mode status, 2x/s: 0x1d carries the game's adapter-reset count (8-bit,
         // wrapping), 0x0e the adapter's start-up stage.
@@ -91,6 +94,10 @@ class GbLinkBase extends EventTarget {
 
     rebootToBootloader() {
         return this.sendCommand([COMMAND.REBOOT_BOOTLOADER]).catch(() => {});
+    }
+
+    setMode(mode) {
+        return this.sendCommand([COMMAND.SET_MODE, mode]);
     }
 
     leaveMode() {
@@ -156,6 +163,11 @@ export class GbLinkSerial extends GbLinkBase {
     sendCommand(payload) {
         if (!this.writer) return Promise.reject(new Error('Not connected'));
         return this.writer.write(buildGbFrame(GB_CHANNEL.COMMAND, Uint8Array.from(payload)));
+    }
+
+    sendData(payload) {
+        if (!this.writer) return Promise.reject(new Error('Not connected'));
+        return this.writer.write(buildGbFrame(GB_CHANNEL.DATA, payload));
     }
 
     async close() {
@@ -247,6 +259,11 @@ export class GbLinkUsb extends GbLinkBase {
     sendCommand(payload) {
         if (!this.endpoints) return Promise.reject(new Error('Not connected'));
         return this.transferOut(this.endpoints.commandOut, Uint8Array.from(payload));
+    }
+
+    sendData(payload) {
+        if (!this.endpoints) return Promise.reject(new Error('Not connected'));
+        return this.transferOut(this.endpoints.dataOut, payload);
     }
 
     async close() {

@@ -14,7 +14,9 @@ Pick one at the top of the page, or open `#gba` or `#switch` directly.
 1. **ESP32 board:** install the firmware and drop your `prod.keys` on the page.
 2. **GB-Link adapter:** install the wireless adapter firmware.
 3. **Play:** wire the boards together, or leave both on USB and let the page pass the
-   traffic between them.
+   traffic between them. For Ruby and Sapphire, pick them here: the page links the game
+   by cable (the adapter's mode `0x01`) and translates that link into the Switch's
+   wireless, so both boards must be on USB.
 
 **PC to Switch** (ESP32 board only)
 
@@ -77,6 +79,7 @@ firmware/tools/package_web.py
 | `js/flash-esp.js`, `js/flash-pico.js` | installing firmware |
 | `js/keys.js` | reading `prod.keys` |
 | `js/trade/` | trading without a GBA |
+| `js/cable/` | Ruby and Sapphire: the adapter's cable mode and the translation to the Switch's wireless (`translator.js` is MPL-2.0, ported from [mgba_LDN](https://github.com/Gr3nSkyDragon/mgba_LDN)) |
 
 ## Tests
 
@@ -86,6 +89,7 @@ These run without any hardware:
 node web/tests/run.mjs            # framing and the board connection
 node web/tests/trade.mjs          # trade code against the C# host
 node web/tests/session-test.mjs   # whole trades against a stand-in Switch
+node web/tests/cable-test.mjs     # Ruby's cable link translated, against stand-ins for both games
 ```
 
 ## Third-party code

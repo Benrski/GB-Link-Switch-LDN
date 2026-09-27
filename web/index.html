@@ -135,10 +135,16 @@
                 <span class="step">3</span>
                 <div>
                     <h2 id="play-title">Play</h2>
-                    <p class="sub">Connect the two boards with three wires, or let this page carry the link.</p>
+                    <p class="sub" id="play-sub">Connect the two boards with three wires, or let this page carry the link.</p>
                 </div>
                 <span class="dot" id="play-dot"></span>
             </div>
+
+            <div class="switcher" id="play-game" role="group" aria-label="The game on the Game Boy Advance">
+                <button type="button" data-game="wireless" aria-pressed="true">FireRed, LeafGreen, Emerald</button>
+                <button type="button" data-game="cable" aria-pressed="false">Ruby, Sapphire</button>
+            </div>
+            <p class="fine" id="game-note-cable" hidden>Ruby and Sapphire have no wireless. This page links them by cable and turns that link into the Switch's wireless, so both boards stay on USB. Trades only, with the Switch leading.</p>
 
             <div class="session" id="session" hidden>
                 <p class="headline" id="session-headline">–</p>
@@ -146,7 +152,7 @@
             </div>
 
             <div class="choices">
-                <div class="choice">
+                <div class="choice" id="play-standalone">
                     <h3>Standalone</h3>
                     <p>Three wires between the boards, powered from anything. This page is not needed while you play.</p>
                     <p class="fine" id="wiring">Connect the board in step 1 to see which of its pins go to the adapter's <strong>GP8</strong> and <strong>GP9</strong>.</p>
@@ -179,7 +185,13 @@
 
             <details class="more" open>
                 <summary>On the consoles</summary>
-                <ol class="fine">
+                <ol class="fine" id="consoles-cable" hidden>
+                    <li>Switch: upstairs in a Pokémon Center, Direct Corner, Trade Center, become the leader.</li>
+                    <li>Ruby or Sapphire, with the adapter on the link cable: upstairs in a Pokémon Center, talk to the attendant at the middle counter and choose to trade.</li>
+                    <li>The page joins the Switch's group once the Game Boy Advance has linked. Accept the join on the Switch, then walk to the trade table on both consoles.</li>
+                    <li>Leave the room on both consoles when you are done. After that the board restarts and is ready again about ten seconds later.</li>
+                </ol>
+                <ol class="fine" id="consoles-wireless">
                     <li>Switch: upstairs in a Pokémon Center, Direct Corner, Trade Center or Colosseum, become the leader.</li>
                     <li>Game Boy Advance, with the adapter on a Game Boy Color cable: pick the same thing and join the group. The Switch shows up after a few seconds.</li>
                     <li>Or the other way round: become the leader on the Game Boy Advance and join its group on the Switch.</li>

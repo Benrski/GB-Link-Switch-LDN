@@ -5,6 +5,7 @@
 import { EspDevice, ESP_FILTERS, FAST_BAUD, newer, reopenPort, sleep } from './esp.js';
 import { GbLinkSerial, GbLinkUsb, BOOTROM_VENDOR_ID, GBLINK_VENDOR_ID } from './gblink.js';
 import { Bridge } from './bridge.js';
+import { CableSession } from './cable/session.js';
 import { parseProdKeys } from './keys.js';
 import { loadManifest, fetchBytes } from './manifest.js';
 import { fromHex, toHex } from './trade/bytes.js';
@@ -78,7 +79,8 @@ const state = {
     opponent: null,         // { name, party: [six or null] }
 
     resetLoop: false,       // adapter reports repeated resets by the game
-    bridge: null,
+    game: 'wireless',       // the GBA's game: wireless (FRLG, Emerald) | cable (Ruby, Sapphire)
+    bridge: null,           // Bridge, or CableSession for Ruby and Sapphire
     bridgeTimer: null,
     bridgeNote: null,
     wiringNote: null,
@@ -559,6 +561,11 @@ function renderSession() {
         headline = 'The board needs its keys.';
         hint = 'Without them it cannot read the Switch\'s wireless. Add your prod.keys in step 1.';
         tone = 'warn';
+    } else if (state.bridge instanceof CableSession) {
+        ({ headline, hint, tone } = cableView(state.bridge, status));
+    } else if (state.game === 'cable') {
+        headline = 'Press Start to link Ruby or Sapphire with the Switch.';
+        hint = 'Both boards stay on USB: this page does the linking.';
     } else if (status) {
         const running = status.state === 'run';
         if (status.state === 'stopped' || status.state === 'idle') {
@@ -602,6 +609,17 @@ function renderSession() {
     $('session-hint').textContent = hint;
     box.className = `session ${tone}`.trim();
     $('play-dot').className = `dot ${tone === 'good' ? 'good' : tone === 'warn' ? 'warn' : 'busy'}`;
+}
+
+// Ruby or Sapphire: the board finds and joins the Switch's room; the page joins the group
+// once the game has linked on the cable.
+function cableView(cable, status) {
+    if (cable.linked) return { headline: 'Ruby or Sapphire and the Switch are linked.', hint: 'Leave the room on both consoles when you are done; the board then gets ready for the next one.', tone: 'good' };
+    if (!status || status.state === 'scan') return { headline: 'Looking for the Switch’s trade room…', hint: 'On the Switch, open the Trade Center in the Direct Corner as the group leader.', tone: '' };
+    if (status.state !== 'run') return { headline: 'Joining the Switch’s room…', hint: '', tone: '' };
+    if (cable.tradeReady) return { headline: 'Joining the Switch’s group…', hint: 'Accept the join on the Switch.', tone: 'good' };
+    if (cable.cableOpen) return { headline: 'Ruby or Sapphire is linking…', hint: '', tone: 'good' };
+    return { headline: 'In the Switch’s room. Waiting for Ruby or Sapphire.', hint: 'On the Game Boy Advance, talk to the attendant at the middle counter upstairs in a Pokémon Center and choose to trade.', tone: 'good' };
 }
 
 // ---------------------------------------------------------------- adapter: what to show
@@ -920,15 +938,20 @@ function bridgeBlocker() {
     if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
     if (!state.adapter) return 'Connect the adapter in step 2.';
     if (state.esp.info?.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
-    if (!state.adapterInfo?.wireless) return 'The adapter needs the firmware from step 2.';
+    if (state.game === 'cable' ? !state.adapterInfo?.version : !state.adapterInfo?.wireless) return 'The adapter needs the firmware from step 2.';
     if (!state.keys?.complete) return 'The board needs its keys from step 1.';
     return null;
 }
 
 async function onBridgeStart() {
     if (state.bridge || bridgeBlocker()) return;
-    const bridge = new Bridge(state.esp, state.adapter);
+    const cable = state.game === 'cable';
+    const bridge = cable ? new CableSession(state.esp, state.adapter) : new Bridge(state.esp, state.adapter);
     bridge.addEventListener('failed', (event) => stopBridge(`Stopped: ${describe(event.detail)}`, 'bad'));
+    if (cable) {
+        bridge.addEventListener('log', (event) => log('cable', event.detail));
+        bridge.addEventListener('change', () => renderSession());
+    }
     state.bridgeNote = null;
     setLine('bridge-status', 'Starting…');
     try {
@@ -940,7 +963,7 @@ async function onBridgeStart() {
     }
     state.bridge = bridge;
     state.bridgeTimer = setInterval(renderBridge, 1000);
-    log('page', 'carrying the link between the boards');
+    log('page', cable ? 'linking Ruby or Sapphire with the Switch' : 'carrying the link between the boards');
     render();
     renderBridge();
     pollSoon();
@@ -959,7 +982,7 @@ async function stopBridge(message = null, tone = '') {
 
 function renderBridge() {
     const stats = state.bridge?.stats;
-    if (!stats) return;
+    if (!stats) return;   // CableSession has none
     $('bridge-out').textContent = `${stats.toAdapterFrames.toLocaleString()} ${stats.toAdapterFrames === 1 ? 'frame' : 'frames'}`;
     $('bridge-in').textContent = `${(stats.fromAdapterBytes / 1024).toFixed(1)} KB`;
     $('bridge-sessions').textContent = String(stats.reattached);
@@ -1028,6 +1051,30 @@ function choosePath(path, { keep = true } = {}) {
         history.replaceState(null, '', `${location.pathname}${location.search}#${path}`);
     }
     render();
+}
+
+const GAME_STORE = 'gblink-switch-game';
+const GAMES = ['wireless', 'cable'];
+
+function chooseGame(game) {
+    if (state.bridge || !GAMES.includes(game) || game === state.game) return;
+    state.game = game;
+    state.bridgeNote = null;
+    remember(GAME_STORE, game);
+    render();
+}
+
+function renderGame() {
+    const cable = state.game === 'cable';
+    for (const button of $('play-game').children) {
+        button.setAttribute('aria-pressed', String(button.dataset.game === state.game));
+        button.disabled = Boolean(state.bridge);
+    }
+    $('game-note-cable').hidden = !cable;
+    $('play-sub').textContent = cable ? 'Both boards on USB, with this page linking the game to the Switch.' : 'Connect the two boards with three wires, or let this page carry the link.';
+    $('play-standalone').hidden = cable;
+    $('consoles-cable').hidden = !cable;
+    $('consoles-wireless').hidden = cable;
 }
 
 function renderPaths() {
@@ -1493,7 +1540,8 @@ function render() {
     $('bridge-start').hidden = Boolean(state.bridge);
     $('bridge-start').disabled = Boolean(blocker);
     $('bridge-stop').hidden = !state.bridge;
-    $('bridge-facts').hidden = !state.bridge;
+    $('bridge-facts').hidden = !state.bridge?.stats;
+    renderGame();
     if (state.bridge) setLine('bridge-status', 'Carrying the link. Keep this tab open and in view.', 'good');
     else if (state.bridgeNote) setLine('bridge-status', state.bridgeNote.text, state.bridgeNote.tone);
     else setLine('bridge-status', blocker ?? 'Ready.');
@@ -1600,6 +1648,7 @@ function wireUp() {
         onPk3File(event.dataTransfer?.files?.[0], Number(slot.dataset.slot));
     });
 
+    $('play-game').addEventListener('click', (event) => chooseGame(event.target.closest('[data-game]')?.dataset.game));
     $('bridge-start').addEventListener('click', onBridgeStart);
     $('bridge-stop').addEventListener('click', () => stopBridge());
     $('wiring-check').addEventListener('click', onWiringCheck);
@@ -1637,6 +1686,7 @@ async function start() {
     const asked = location.hash.slice(1);
     state.path = PATHS.includes(asked) ? asked : PATHS.includes(remembered(PATH_STORE)) ? remembered(PATH_STORE) : 'gba';
     state.source = remembered(SOURCE_STORE) === 'party' ? 'party' : 'pool';
+    state.game = remembered(GAME_STORE) === 'cable' ? 'cable' : 'wireless';
     state.poolServer = remembered(SERVER_STORE) || POOL_SERVER;
     loadKept();
     const serial = EspDevice.available();
