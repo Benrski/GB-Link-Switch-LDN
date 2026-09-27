@@ -1113,15 +1113,19 @@ void pia_bridge_status(char *out, size_t cap)
                  g.host->child_frames, g.host->resends, g.gba_devid);
         return;
     }
+    /* national: the Switch's save can link with Ruby, Sapphire and Emerald; Emerald joins a
+       FireRed trade group only then. */
     snprintf(out, cap,
              "state=%s child=%d accepted=%d pia_rx=%d pia_tx=%d decrypt_failed=%d reordered=%d "
              "to_gba=%d from_gba=%d queued=%d repeated=%d overflow=%d hold_dropped=%d "
-             "rx_seen=%d wrong_src=%d short=%d bad_frame=%d msgs=%d unzip_fail=%d conn_state=%d host_id=%04x shed=%d",
+             "rx_seen=%d wrong_src=%d short=%d bad_frame=%d msgs=%d unzip_fail=%d conn_state=%d host_id=%04x shed=%d "
+             "national=%d",
              names[g.state], g.child_connected, g.s.link.accepted, g.s.link.received, g.s.link.sent,
              g.s.link.decrypt_failures, g.s.link.reordered, g.frames_to_gba, g.frames_from_gba,
              g.s.link.out_count, g.s.link.repeated, g.s.link.overflow, g.s.link.hold_dropped,
              g.s.link.rx_seen, g.s.link.rx_wrong_source, g.s.link.rx_short, g.s.link.rx_bad_frame,
-             g.s.link.rx_messages, g.s.link.rx_unzip_fail, g.s.link.conn.state, g.s.link.conn.host_id, g.s.link.shed);
+             g.s.link.rx_messages, g.s.link.rx_unzip_fail, g.s.link.conn.state, g.s.link.conn.host_id, g.s.link.shed,
+             (bin_u16(g.beacon[0] + 2) >> 7) & 1);
     size_t at = strlen(out);
     if (at + 80 < cap)
     {

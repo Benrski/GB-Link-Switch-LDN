@@ -106,6 +106,10 @@ top of each file.
   firmware, and if it still happens, try another cable.
 - **The GBA says the trainer is busy, or waits forever.** Close the room on the Switch
   and open it again.
+- **Emerald says the other trainer is not ready yet.** Emerald trades with FireRed or
+  LeafGreen only once that game has finished the Sevii Islands story (Cerulean Cave
+  shows on its town map). The same happens between two GBAs. The web client says so
+  while it waits for the GBA.
 - **The GBA never sees the Switch.** Check the keys (`LDN_KEYS`), the antenna, and that
   both consoles picked the same activity.
 - **Choppy walking.** Move the board closer to the Switch.

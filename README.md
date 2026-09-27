@@ -52,8 +52,9 @@ only the ESP32 board.
   over USB; nothing is uploaded anywhere.
 - For GBA to Switch: a GB-Link adapter, a **Game Boy Color link cable** (a Game Boy
   Advance cable will not work) and a GBA with FireRed, LeafGreen or Emerald. Emerald can
-  only trade once the Switch's game has fixed Celio's machine on One Island, just like
-  between two GBAs.
+  only trade once the Switch's game has finished the Sevii Islands story (Cerulean Cave
+  shows on its town map), just like between two GBAs. Until then Emerald says the other
+  trainer is not ready.
 
 ## Setting up
 

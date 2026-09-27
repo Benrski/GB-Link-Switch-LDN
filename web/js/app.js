@@ -592,6 +592,7 @@ function renderSession() {
         } else if (status.conn_state === '2') {
             headline = 'In the Switch’s room. Waiting for the Game Boy Advance.';
             hint = 'On the GBA, choose the same activity and join the group.';
+            if (status.national === '0') hint += ' Emerald cannot trade with this game yet: the Switch player has to finish the Sevii Islands story first (Cerulean Cave shows on the town map once it is done). Until then Emerald says the other trainer is not ready. FireRed and LeafGreen can trade now, and battles work with any game.';
             tone = 'good';
         } else {
             headline = 'In the Switch’s room, setting up the session…';
