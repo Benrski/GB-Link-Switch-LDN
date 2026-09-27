@@ -10,8 +10,9 @@ import { CableLink } from './cable.js';
 const FRAME_MS = 1000 / 59.7275;
 
 export class CableSession extends EventTarget {
-    constructor(esp, adapter) {
+    constructor(esp, adapter, { bypassNationally = false } = {}) {
         super();
+        this.bypassNationally = bypassNationally;
         this.esp = esp;
         this.adapter = adapter;
         this.running = false;
@@ -24,6 +25,12 @@ export class CableSession extends EventTarget {
     get cableOpen() { return Boolean(this.cable?.connected); }
     get linked() { return Boolean(this.translator?.linked); }
     get tradeReady() { return Boolean(this.translator?.haveRubyLP); }
+    get switchNotReady() { return Boolean(this.translator?.hostNotReady); }
+
+    setBypass(value) {
+        this.bypassNationally = value;
+        if (this.translator) this.translator.bypassNationally = value;
+    }
 
     log(message) { this.dispatchEvent(new CustomEvent('log', { detail: message })); }
     changed() { this.dispatchEvent(new Event('change')); }
@@ -39,6 +46,7 @@ export class CableSession extends EventTarget {
             disconnect: () => toBoard(command(RFU.DISCONNECT, 0)),
             log: (message) => this.log(message),
         });
+        translator.bypassNationally = this.bypassNationally;
         translator.onLinked = () => this.changed();
         const gb = new GbFrameParser(512);
         const reader = new FrameReader();

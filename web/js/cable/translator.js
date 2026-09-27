@@ -32,6 +32,10 @@ const LP_VERSION_OFFSET = 16;
 const LP_TRAINER_ID_OFFSET = 16 + 4;
 const LP_NAME_OFFSET = 16 + 8;
 const LP_PROGRESS_OFFSET = 16 + 0x10;   // FRLG: progressFlags, neverRead, progressFlagsCopy
+const PROGRESS_CLEARED = 0x11;          // National Dex (0x0F) and a cleared game (0xF0)
+const VERSION_EMERALD = 3;
+// RfuGameData compatibility: can link nationally (bit 7), National Dex, game clear, version.
+const COMPAT_CAN_LINK_NATIONALLY = 1 << 7;
 const LP_LINK_TYPE_OFFSET = 16 + 0x14;
 const LP_BUFFER_SIZE = 200;
 const CARD_SIZE = 100;
@@ -49,9 +53,11 @@ const BARRIER_EMITS = 6;
 const INITIATE_TIMEOUT = 600;
 const IDLE_TIMEOUT = 90;
 const HOST_SILENT_FRAMES = 600;
-// Held keys cross at the cable's packet rate, slower than the Switch's frames: beyond this many
-// waiting, the oldest "no key" report is dropped.
-const HOST_KEY_BACKLOG = 3;
+// The Switch reports held keys once per frame, the cable carries one per packet (about 40 a
+// second), so each packet stands for the Switch frames that passed meanwhile. Measured over
+// this many packets; the backlog is held under HOST_KEY_LAG frames.
+const KEY_RATE_WINDOW = 40;
+const HOST_KEY_LAG = 12;
 
 const AIR = { SEARCH: 0, CONNECTING: 1, NI: 2, UNI: 3 };
 const EXPECT = { NONE: 0, LINK_PLAYER: 1, PULL: 2, CARD: 3 };
@@ -88,6 +94,33 @@ function sizeFromRequest(type) {
         case 4: return 40;
     }
     return 200;
+}
+
+// The Switch's key reports as runs of one code, played back by time: each cable packet takes
+// `step` frames' worth. Every run is played at least once, so a single-frame press is never lost.
+class KeyRuns {
+    constructor() { this.runs = []; }
+    push(code) {
+        const last = this.runs.at(-1);
+        if (last && last.code === code) last.count++;
+        else this.runs.push({ code, count: 1 });
+        if (this.runs.length > KEY_QUEUE) this.runs.shift();
+    }
+    get frames() { return this.runs.reduce((sum, run) => sum + run.count, 0); }
+    pop(step) {
+        const head = this.runs[0];
+        if (!head) return KEY_EMPTY;
+        const backlog = this.frames;
+        if (backlog > HOST_KEY_LAG) step += (backlog - HOST_KEY_LAG) / 4;
+        head.count -= step;
+        if (head.count <= 0) {
+            this.runs.shift();
+            // The overshoot shortens the next run, which still plays at least once.
+            if (this.runs.length) this.runs[0].count = Math.max(this.runs[0].count + head.count, 0.01);
+        }
+        return head.code;
+    }
+    clear() { this.runs = []; }
 }
 
 class KeyQueue {
@@ -315,7 +348,10 @@ export class CableTranslator {
         this.keysActive = false;
         // Held-key codes are one-frame events, so they travel through queues.
         this.rubyKeys = new KeyQueue();   // game -> leader
-        this.hostKeys = new KeyQueue();   // leader -> game
+        this.hostKeys = new KeyRuns();    // leader -> game
+        this.keyStep = 1.5;               // Switch frames per cable packet
+        this.keyPushes = 0;
+        this.keyPops = 0;
         this.lastHostKeyCount = -1;
         this.purpose = PURPOSE.NONE;
         this.closeRoundsLeft = 0;
@@ -343,6 +379,7 @@ export class CableTranslator {
 
         this.cablePackets = 0;
         this.readyAt = 0;
+        this.refusing = false;
         this.announced = false;
         this.expect = EXPECT.NONE;
         this.pullType = 0;
@@ -354,7 +391,10 @@ export class CableTranslator {
         this.cq = [];
         this.sessions = 0;
 
-        this.onLinked = null;     // (linked) wireless link up or down
+        this.hostNotReady = false;   // the Switch's trade group is not open to Ruby yet
+        this.refusing = false;       // the game was told the link-up failed and is closing
+        this.bypassNationally = false;   // join even if the Switch's game cannot link nationally
+        this.onLinked = null;     // (linked) wireless link up or down, or hostNotReady changed
     }
 
     get linked() { return this.link === AIR.UNI; }
@@ -393,17 +433,17 @@ export class CableTranslator {
         this.childQueue.push({ data: block, size, isLinkPlayer, isCard });
     }
 
-    // The game's LinkPlayer as a LeafGreen with link type 0, what an FRLG wireless link uses.
-    // FRLG reads progress flags where Ruby's longer name field ends (Ruby fills those bytes
-    // with its gender and trainer id). FRLG skips its partner's National Dex check for Ruby,
-    // so the flags claim the National Dex.
+    // The game's LinkPlayer as an Emerald with link type 0, what a wireless link uses. FRLG
+    // reads progress flags where Ruby's longer name field ends (Ruby fills those bytes with its
+    // gender and trainer id): they claim the National Dex and a cleared game, so the Switch
+    // lets any Pokémon go to Ruby, as it does for a real Ruby.
     buildLinkPlayerForHost() {
         const out = new Uint8Array(LP_BUFFER_SIZE);
         out.set(this.rubyLP);
-        put16(out, LP_VERSION_OFFSET, 0x4005);
-        out[LP_PROGRESS_OFFSET] = 1;
+        put16(out, LP_VERSION_OFFSET, 0x4000 | VERSION_EMERALD);
+        out[LP_PROGRESS_OFFSET] = PROGRESS_CLEARED;
         out[LP_PROGRESS_OFFSET + 1] = 0;
-        out[LP_PROGRESS_OFFSET + 2] = 1;
+        out[LP_PROGRESS_OFFSET + 2] = PROGRESS_CLEARED;
         out.fill(0, LP_LINK_TYPE_OFFSET, LP_LINK_TYPE_OFFSET + 4);
         return out;
     }
@@ -568,6 +608,7 @@ export class CableTranslator {
         if (this.expect === EXPECT.LINK_PLAYER && size >= LINK_PLAYER_BLOCK_SIZE) {
             this.rubyLP.set(data.subarray(0, LINK_PLAYER_BLOCK_SIZE));
             this.haveRubyLP = true;
+            if (!this.joined) this.hostNotReady = false;   // decided again from the room's next beacon
             this.sessionRubyLP = true;
             this.expect = EXPECT.NONE;
             this.log(`game's LinkPlayer received (version ${hex(le16(data, LP_VERSION_OFFSET))}, link type ${hex(le16(data, LP_LINK_TYPE_OFFSET))})`);
@@ -578,7 +619,7 @@ export class CableTranslator {
         if (this.expect === EXPECT.CARD && size >= CARD_SIZE) {
             this.rubyCard.fill(0);
             this.rubyCard.set(data.subarray(0, CARD_VERSION_OFFSET));
-            this.rubyCard[CARD_VERSION_OFFSET] = 5;
+            this.rubyCard[CARD_VERSION_OFFSET] = VERSION_EMERALD;
             this.haveRubyCard = true;
             this.expect = EXPECT.NONE;
             this.log('game\'s trainer card received');
@@ -594,9 +635,9 @@ export class CableTranslator {
         }
         block.set(data.subarray(0, Math.min(size, MAX_BLOCK_BYTES)));
         if (use === CARD_SIZE) {
-            // Ruby's card is the 0x38-byte RSE layout; FRLG's extra fields stay empty.
+            // Ruby's card is the 0x38-byte RSE layout; the fields after it stay empty.
             block.fill(0, CARD_VERSION_OFFSET);
-            block[CARD_VERSION_OFFSET] = 5;
+            block[CARD_VERSION_OFFSET] = VERSION_EMERALD;
         }
         this.childQueuePush(block, use, false);
     }
@@ -630,7 +671,26 @@ export class CableTranslator {
         }
     }
 
+    // The Switch's game cannot link with Ruby yet. Ruby has no message for that; a LinkPlayer
+    // with another link type makes it say "The link partners appear to have made different
+    // selections." and close the link.
+    refuse() {
+        const block = this.rubyLP.slice();
+        put16(block, LP_LINK_TYPE_OFFSET, le16(this.rubyLP, LP_LINK_TYPE_OFFSET) ^ 0xffff);
+        block[16 + 0x18] = 0;
+        this.cablePushBlock(block, block.length);
+        this.p0LPDelivered = true;
+        this.refusing = true;
+        this.haveRubyLP = false;
+        this.log('the Switch\'s game cannot link with Ruby or Sapphire yet: ending the game\'s link-up');
+    }
+
     gameClose() {
+        if (this.refusing) {
+            this.refusing = false;
+            this.cablePushCmd(LINKCMD.READY_CLOSE_LINK, 0, 0);
+            return;
+        }
         if (this.exitKeySeen && !this.cancelPending && !this.roomClosed) {
             // Leaving the room: the leader closes rather than standing by.
             this.log('game close after EXIT_ROOM: closing the wireless link');
@@ -790,12 +850,13 @@ export class CableTranslator {
 
     // ---- wireless side
 
-    // RfuGameData for the NI exchange: the game's trainer as English LeafGreen, trading.
+    // RfuGameData for the NI exchange: the game's trainer as an English Emerald that has
+    // finished the game, trading.
     buildGameData() {
         const lp = this.rubyLP;
         const out = new Uint8Array(26);
         put16(out, 0, 2);
-        put16(out, 2, 2 | (5 << 10));
+        put16(out, 2, 2 | COMPAT_CAN_LINK_NATIONALLY | (1 << 8) | (1 << 9) | (VERSION_EMERALD << 10));
         put16(out, 4, le16(lp, LP_TRAINER_ID_OFFSET));
         out[12] = 4 | 0x80;
         let i = 0;
@@ -858,6 +919,17 @@ export class CableTranslator {
             // RfuGameData: word 3's low byte is the activity (trade = 4).
             const word3 = ((frame[24] << 24) | (frame[25] << 16) | (frame[26] << 8) | frame[27]) >>> 0;
             if (occupied || (word3 & 0x7f) !== 4) return;
+            // Emerald joins a FireRed or LeafGreen trade group only once that game can link
+            // nationally (its Sevii Islands story is done). A real Ruby and FireRed have the
+            // same rule, checked by FireRed.
+            const compat = frame[13] | (frame[12] << 8);
+            const ready = this.bypassNationally || (compat & COMPAT_CAN_LINK_NATIONALLY) !== 0;
+            if (ready !== !this.hostNotReady) {
+                this.hostNotReady = !ready;
+                if (!ready) this.log('the Switch\'s game cannot link with Ruby or Sapphire yet: not joining');
+                this.onLinked?.(this.linked);
+            }
+            if (!ready) return;
             this.hostId = header & 0xffff;
             this.log(`trade group ${hex(this.hostId)} found: joining`);
             this.setLink(AIR.CONNECTING);
@@ -1029,13 +1101,17 @@ export class CableTranslator {
     }
 
     pushHostKey(code) {
-        // Drop the oldest "no key" report first when the cable falls behind.
-        if (this.hostKeys.count >= HOST_KEY_BACKLOG) {
-            const at = this.hostKeys.codes.indexOf(KEY_EMPTY);
-            if (at >= 0) this.hostKeys.codes.splice(at, 1);
-            else if (code === KEY_EMPTY) return;
-        }
         this.hostKeys.push(code);
+        if (this.keysActive) this.keyPushes++;
+    }
+
+    // The next key report for the game, one per cable packet.
+    hostKey() {
+        if (++this.keyPops >= KEY_RATE_WINDOW) {
+            this.keyStep = Math.min(3, Math.max(1, this.keyPushes / this.keyPops));
+            this.keyPushes = this.keyPops = 0;
+        }
+        return this.hostKeys.pop(this.keyStep);
     }
 
     // Once per GBA frame.
@@ -1113,6 +1189,7 @@ export class CableTranslator {
     // The next command for the game, or null for none this packet.
     nextCommand() {
         this.cablePackets++;
+        if (this.hostNotReady && this.sessionRubyLP && !this.p0LPDelivered && !this.joined) this.refuse();
         if (this.held.length || this.pendingPull >= 0) this.releaseHeld();
         if (this.cardArmed && this.cablePackets >= this.cardAt) {
             this.cardArmed = false;
@@ -1125,7 +1202,7 @@ export class CableTranslator {
             return [LINKCMD.SEND_LINK_TYPE, 0x1133, 0, 0, 0, 0, 0, 0];
         }
         if (this.cq.length) return this.cq.shift();
-        if (this.keysActive) return [LINKCMD.SEND_HELD_KEYS, this.hostKeys.pop(), 0, 0, 0, 0, 0, 0];
+        if (this.keysActive) return [LINKCMD.SEND_HELD_KEYS, this.hostKey(), 0, 0, 0, 0, 0, 0];
         return null;
     }
 }

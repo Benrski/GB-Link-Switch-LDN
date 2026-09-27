@@ -145,6 +145,7 @@ button.quiet { background: none; font-weight: 500; color: var(--muted); padding:
 .drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 
 .fine { color: var(--muted); font-size: 0.86rem; margin: 12px 0 0; }
+.fine.warn { color: var(--warn); }
 ol.fine { padding-left: 1.3em; }
 ol.fine li { margin: 4px 0; }
 

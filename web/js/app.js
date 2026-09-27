@@ -80,6 +80,7 @@ const state = {
 
     resetLoop: false,       // adapter reports repeated resets by the game
     game: 'wireless',       // the GBA's game: wireless (FRLG, Emerald) | cable (Ruby, Sapphire)
+    bypassNationally: false,   // Ruby and Sapphire join even if the Switch's game is not far enough
     bridge: null,           // Bridge, or CableSession for Ruby and Sapphire
     bridgeTimer: null,
     bridgeNote: null,
@@ -617,6 +618,7 @@ function cableView(cable, status) {
     if (cable.linked) return { headline: 'Ruby or Sapphire and the Switch are linked.', hint: 'Leave the room on both consoles when you are done; the board then gets ready for the next one.', tone: 'good' };
     if (!status || status.state === 'scan') return { headline: 'Looking for the Switch’s trade room…', hint: 'On the Switch, open the Trade Center in the Direct Corner as the group leader.', tone: '' };
     if (status.state !== 'run') return { headline: 'Joining the Switch’s room…', hint: '', tone: '' };
+    if (cable.switchNotReady) return { headline: 'The Switch’s game cannot trade with Ruby or Sapphire yet.', hint: 'Ruby and Sapphire trade with FireRed and LeafGreen only once that game has finished the Sevii Islands story (Cerulean Cave shows on its town map). Two Game Boy Advance games have the same rule. Ruby and Sapphire have no message for it, so the GBA says the link partners made different selections.', tone: 'warn' };
     if (cable.tradeReady) return { headline: 'Joining the Switch’s group…', hint: 'Accept the join on the Switch.', tone: 'good' };
     if (cable.cableOpen) return { headline: 'Ruby or Sapphire is linking…', hint: '', tone: 'good' };
     return { headline: 'In the Switch’s room. Waiting for Ruby or Sapphire.', hint: 'On the Game Boy Advance, talk to the attendant at the middle counter upstairs in a Pokémon Center and choose to trade.', tone: 'good' };
@@ -946,7 +948,7 @@ function bridgeBlocker() {
 async function onBridgeStart() {
     if (state.bridge || bridgeBlocker()) return;
     const cable = state.game === 'cable';
-    const bridge = cable ? new CableSession(state.esp, state.adapter) : new Bridge(state.esp, state.adapter);
+    const bridge = cable ? new CableSession(state.esp, state.adapter, { bypassNationally: state.bypassNationally }) : new Bridge(state.esp, state.adapter);
     bridge.addEventListener('failed', (event) => stopBridge(`Stopped: ${describe(event.detail)}`, 'bad'));
     if (cable) {
         bridge.addEventListener('log', (event) => log('cable', event.detail));
@@ -1054,6 +1056,7 @@ function choosePath(path, { keep = true } = {}) {
 }
 
 const GAME_STORE = 'gblink-switch-game';
+const BYPASS_STORE = 'gblink-switch-bypass-nationally';
 const GAMES = ['wireless', 'cable'];
 
 function chooseGame(game) {
@@ -1064,6 +1067,13 @@ function chooseGame(game) {
     render();
 }
 
+function setBypass(value) {
+    state.bypassNationally = value;
+    remember(BYPASS_STORE, value ? '1' : null);
+    if (state.bridge instanceof CableSession) state.bridge.setBypass(value);
+    render();
+}
+
 function renderGame() {
     const cable = state.game === 'cable';
     for (const button of $('play-game').children) {
@@ -1071,6 +1081,9 @@ function renderGame() {
         button.disabled = Boolean(state.bridge);
     }
     $('game-note-cable').hidden = !cable;
+    $('bypass-panel').hidden = !cable;
+    $('bypass-nationally').checked = state.bypassNationally;
+    $('bypass-warning').hidden = !state.bypassNationally;
     $('play-sub').textContent = cable ? 'Both boards on USB, with this page linking the game to the Switch.' : 'Connect the two boards with three wires, or let this page carry the link.';
     $('play-standalone').hidden = cable;
     $('consoles-cable').hidden = !cable;
@@ -1649,6 +1662,7 @@ function wireUp() {
     });
 
     $('play-game').addEventListener('click', (event) => chooseGame(event.target.closest('[data-game]')?.dataset.game));
+    $('bypass-nationally').addEventListener('change', (event) => setBypass(event.target.checked));
     $('bridge-start').addEventListener('click', onBridgeStart);
     $('bridge-stop').addEventListener('click', () => stopBridge());
     $('wiring-check').addEventListener('click', onWiringCheck);
@@ -1687,6 +1701,7 @@ async function start() {
     state.path = PATHS.includes(asked) ? asked : PATHS.includes(remembered(PATH_STORE)) ? remembered(PATH_STORE) : 'gba';
     state.source = remembered(SOURCE_STORE) === 'party' ? 'party' : 'pool';
     state.game = remembered(GAME_STORE) === 'cable' ? 'cable' : 'wireless';
+    state.bypassNationally = remembered(BYPASS_STORE) === '1';
     state.poolServer = remembered(SERVER_STORE) || POOL_SERVER;
     loadKept();
     const serial = EspDevice.available();
