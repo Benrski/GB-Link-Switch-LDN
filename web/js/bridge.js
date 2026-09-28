@@ -1,13 +1,20 @@
 // Relays GB-Link frames between the bridge firmware's host adapter port and the adapter.
-// Frames are passed through unparsed.
+// Frames are passed through unparsed, except for the National Dex bypass (national.js).
+
+import { NationalPatch, VERSION } from './national.js';
 
 const CHUNK = 1024;
 
 export class Bridge extends EventTarget {
-    constructor(esp, adapter) {
+    constructor(esp, adapter, { bypassNationally = false } = {}) {
         super();
         this.esp = esp;
         this.adapter = adapter;
+        // The Switch's group reaches the GBA as an Emerald's; an Emerald's group reaches the
+        // Switch as a FireRed's.
+        this.down = new NationalPatch(() => VERSION.EMERALD);
+        this.up = new NationalPatch((v) => (v === VERSION.FIRE_RED || v === VERSION.LEAF_GREEN ? null : VERSION.FIRE_RED));
+        this.setBypass(bypassNationally);
         this.running = false;
         this.stats = { toAdapterFrames: 0, toAdapterBytes: 0, fromAdapterBytes: 0, reattached: 0, since: 0 };
         this.onReattached = () => {
@@ -19,12 +26,15 @@ export class Bridge extends EventTarget {
     async start() {
         if (this.running) return;
         this.stats = { toAdapterFrames: 0, toAdapterBytes: 0, fromAdapterBytes: 0, reattached: 0, since: Date.now() };
-        this.esp.onAdapterFrame = (bytes) => {
+        this.esp.onAdapterFrame = (received) => {
+            const bytes = this.down.push(received);
+            if (!bytes.length) return;
             this.stats.toAdapterFrames++;
             this.stats.toAdapterBytes += bytes.length;
             this.adapter.writeStream(bytes);
         };
-        this.adapter.onBytes = (bytes) => {
+        this.adapter.onBytes = (received) => {
+            const bytes = this.up.push(received);
             this.stats.fromAdapterBytes += bytes.length;
             for (let at = 0; at < bytes.length; at += CHUNK) this.esp.sendAdapter(bytes.subarray(at, at + CHUNK));
         };
@@ -36,6 +46,10 @@ export class Bridge extends EventTarget {
             await this.stop();
             throw error;
         }
+    }
+
+    setBypass(value) {
+        this.down.enabled = this.up.enabled = value;
     }
 
     // The host-port setting is lost on the restart after every session; reapplied on reattach.

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GB-Link Switch LDN</title>
-    <meta name="description" content="Play Pokémon FireRed and LeafGreen on the Switch with a real Game Boy Advance, or trade with the Switch straight from your browser.">
+    <meta name="description" content="Trade and battle with Pokémon FireRed and LeafGreen on the Nintendo Switch: from a real Game Boy Advance, from this page, or online with Celio.">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%237c8cff'/%3E%3Cpath d='M9 12h14M9 20h14M12 9l-3 3 3 3M20 17l3 3-3 3' stroke='%230b0d18' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -17,7 +17,7 @@
                 <a href="https://github.com/GB-Link/GB-Link-Switch-LDN">GitHub</a>
             </nav>
         </div>
-        <p>Play Pokémon FireRed and LeafGreen on the Switch with a real Game Boy Advance, or trade with the Switch straight from this page.</p>
+        <p>Trade and battle with Pokémon FireRed and LeafGreen on the Nintendo Switch: from a real Game Boy Advance, from this page, or online with Celio.</p>
     </header>
 
     <main>
@@ -25,14 +25,19 @@
 
         <nav class="paths" id="paths" role="tablist" aria-label="What links with the Switch">
             <button class="path" type="button" role="tab" id="path-gba" data-path="gba" aria-selected="true">
-                <strong>GBA to Switch</strong>
-                <span>A real Game Boy Advance trades and battles with the Switch.</span>
-                <span class="needs">ESP32 + GB-Link required</span>
+                <strong>Game Boy Advance</strong>
+                <span>Your Game Boy Advance trades and battles with the Switch. Ruby, Sapphire, Emerald, FireRed, LeafGreen.</span>
+                <span class="needs">ESP32 + GB-Link</span>
             </button>
             <button class="path" type="button" role="tab" id="path-switch" data-path="switch" aria-selected="false">
-                <strong>PC to Switch</strong>
-                <span>Trade with the Switch from this page: Wonder Trade, or your own .pk3 files.</span>
-                <span class="needs">ESP32 required</span>
+                <strong>Trade from this page</strong>
+                <span>The Switch trades with this page: Wonder Trade, or your own .pk3 files.</span>
+                <span class="needs">ESP32</span>
+            </button>
+            <button class="path" type="button" role="tab" id="path-celio" data-path="celio" aria-selected="false">
+                <strong>Online with Celio</strong>
+                <span>The Switch trades and battles over the internet with another player: a Game Boy Advance or an emulator at celio.gblink.io, or another Switch.</span>
+                <span class="needs">ESP32</span>
             </button>
         </nav>
 
@@ -135,7 +140,7 @@
                 <span class="step">3</span>
                 <div>
                     <h2 id="play-title">Play</h2>
-                    <p class="sub" id="play-sub">Connect the two boards with three wires, or let this page carry the link.</p>
+                    <p class="sub" id="play-sub">Let this page carry the link, or connect the two boards with three wires.</p>
                 </div>
                 <span class="dot" id="play-dot"></span>
             </div>
@@ -144,10 +149,10 @@
                 <button type="button" data-game="wireless" aria-pressed="true">FireRed, LeafGreen, Emerald</button>
                 <button type="button" data-game="cable" aria-pressed="false">Ruby, Sapphire</button>
             </div>
-            <p class="fine" id="game-note-cable" hidden>Ruby and Sapphire have no wireless. This page links them by cable and turns that link into the Switch's wireless, so both boards stay on USB. Trades only, with the Switch leading.</p>
+            <p class="fine" id="game-note-cable" hidden>Ruby and Sapphire have no wireless. This page links them by cable and turns that link into the Switch's wireless, so both boards stay on USB. Trades and single or double battles, with the Switch leading.</p>
             <div id="bypass-panel" hidden>
                 <label class="fine check"><input type="checkbox" id="bypass-nationally"> Bypass the National Dex requirement</label>
-                <p class="fine warn" id="bypass-warning" hidden>Pokémon traded from Ruby or Sapphire may not be able to be traded out of the Switch until its game meets the requirements: the National Dex, and the Sevii Islands story finished (Cerulean Cave shows on the town map).</p>
+                <p class="fine warn" id="bypass-warning" hidden>Pokémon from Ruby, Sapphire or Emerald may not be tradable out of the Switch's game until it has the National Dex and has finished the Sevii Islands story (Cerulean Cave shows on its town map). Only while this page carries the link, not with the boards wired. FireRed and LeafGreen need no bypass: leave it off for them.</p>
             </div>
 
             <div class="session" id="session" hidden>
@@ -156,6 +161,20 @@
             </div>
 
             <div class="choices">
+                <div class="choice">
+                    <h3>Through this computer</h3>
+                    <p>Both boards on USB, this page in between. Keep the tab in view while you play.</p>
+                    <div class="actions">
+                        <button class="primary" id="bridge-start" disabled>Start</button>
+                        <button id="bridge-stop" hidden>Stop</button>
+                    </div>
+                    <p class="status" id="bridge-status" aria-live="polite">Connect both boards first.</p>
+                    <dl class="facts" id="bridge-facts" hidden>
+                        <div><dt>To the adapter</dt><dd id="bridge-out">0 frames</dd></div>
+                        <div><dt>From the adapter</dt><dd id="bridge-in">0 KB</dd></div>
+                        <div><dt>Board restarts followed</dt><dd id="bridge-sessions">0</dd></div>
+                    </dl>
+                </div>
                 <div class="choice" id="play-standalone">
                     <h3>Standalone</h3>
                     <p>Three wires between the boards, powered from anything. This page is not needed while you play.</p>
@@ -171,28 +190,14 @@
                     <div class="actions"><button id="wiring-check" disabled>Check the wiring</button></div>
                     <p class="status" id="wiring-status" aria-live="polite"></p>
                 </div>
-                <div class="choice">
-                    <h3>Through this computer</h3>
-                    <p>Both boards on USB, this page in between. Keep the tab in view while you play.</p>
-                    <div class="actions">
-                        <button class="primary" id="bridge-start" disabled>Start</button>
-                        <button id="bridge-stop" hidden>Stop</button>
-                    </div>
-                    <p class="status" id="bridge-status" aria-live="polite">Connect both boards first.</p>
-                    <dl class="facts" id="bridge-facts" hidden>
-                        <div><dt>To the adapter</dt><dd id="bridge-out">0 frames</dd></div>
-                        <div><dt>From the adapter</dt><dd id="bridge-in">0 KB</dd></div>
-                        <div><dt>Board restarts followed</dt><dd id="bridge-sessions">0</dd></div>
-                    </dl>
-                </div>
             </div>
 
             <details class="more" open>
                 <summary>On the consoles</summary>
                 <ol class="fine" id="consoles-cable" hidden>
-                    <li>Switch: upstairs in a Pokémon Center, Direct Corner, Trade Center, become the leader.</li>
-                    <li>Ruby or Sapphire, with the adapter on the link cable: upstairs in a Pokémon Center, talk to the attendant at the middle counter and choose to trade.</li>
-                    <li>The page joins the Switch's group once the Game Boy Advance has linked. Accept the join on the Switch, then walk to the trade table on both consoles.</li>
+                    <li>Switch: upstairs in a Pokémon Center, Direct Corner, Trade Center or Colosseum (single or double battle), become the leader.</li>
+                    <li>Ruby or Sapphire, with the adapter on the link cable: upstairs in a Pokémon Center, talk to the attendant at the middle counter to trade, or the left one for the same kind of battle.</li>
+                    <li>The page joins the Switch's group once the Game Boy Advance has linked. Accept the join on the Switch, then walk to the trade table, or onto the battle spots, on both consoles.</li>
                     <li>Leave the room on both consoles when you are done. After that the board restarts and is ready again about ten seconds later.</li>
                 </ol>
                 <ol class="fine" id="consoles-wireless">
@@ -273,6 +278,63 @@
                 <p class="fine" id="pool-options"><label for="pool-server">Trade pool server</label> <input type="text" id="pool-server" spellcheck="false" autocomplete="off"> <button class="quiet" id="pool-server-reset" hidden>Back to the usual one</button></p>
                 <p class="fine" id="party-board" hidden>Keep the tab in view while you trade: a hidden tab runs too slowly for the game.</p>
                 <p class="fine" id="party-fine" hidden>A Pokémon that arrives takes the slot of the one that left. Offer it again to trade it straight back.</p>
+            </details>
+        </section>
+
+        <section class="card" id="celio-card" data-path="celio" aria-labelledby="celio-title">
+            <div class="card-head">
+                <span class="step">2</span>
+                <div>
+                    <h2 id="celio-title">Online with Celio</h2>
+                    <p class="sub">Game Boy Advance and emulator players connect at <a href="https://celio.gblink.io/" target="_blank" rel="noopener">celio.gblink.io</a>; another Switch player uses this page.</p>
+                </div>
+                <span class="dot" id="celio-dot"></span>
+            </div>
+
+            <div id="celio-start">
+                <div class="actions celio-join">
+                    <button class="primary" id="celio-create">Create session</button>
+                    <span class="fine">or</span>
+                    <input type="text" id="celio-code" placeholder="Session Id" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+                    <button id="celio-join" disabled>Join</button>
+                </div>
+            </div>
+
+            <div id="celio-in" hidden>
+                <p class="celio-id">Session <code id="celio-id"></code> <button class="quiet" id="celio-copy">Copy</button></p>
+                <p class="status" id="celio-partner">Waiting for the other player…</p>
+                <div class="actions">
+                    <button class="primary" id="celio-link" disabled>Start</button>
+                    <button id="celio-leave">Leave session</button>
+                </div>
+            </div>
+
+            <p class="status" id="celio-note" aria-live="polite"></p>
+
+            <div class="session" id="celio-session" hidden>
+                <p class="headline" id="celio-headline">–</p>
+                <p class="hint" id="celio-hint"></p>
+                <div class="actions" id="celio-rooms" hidden>
+                    <button type="button" data-activity="4">Trade Center</button>
+                    <button type="button" data-activity="1">Single battle</button>
+                    <button type="button" data-activity="2">Double battle</button>
+                </div>
+            </div>
+
+            <details class="more" open>
+                <summary>How it works</summary>
+                <ol class="fine">
+                    <li>Create a session and send its Session Id to the other player, or join theirs. On a Game Boy Advance with a GB-Link, or in an emulator, they use <a href="https://celio.gblink.io/" target="_blank" rel="noopener">celio.gblink.io</a>. Both press Start.</li>
+                    <li>The Celio server decides which side leads. The page then says whether to lead a group on the Switch or to join the group it opens, and in that case asks which room.</li>
+                    <li>On the Switch: upstairs in a Pokémon Center, the Direct Corner, then the Trade Center or the Colosseum. The other player goes to the same room.</li>
+                    <li>Leaving the room on both consoles ends the session. Keep this tab in view while you play.</li>
+                </ol>
+            </details>
+            <details class="more">
+                <summary>Options: National Dex bypass, Celio server</summary>
+                <label class="fine check"><input type="checkbox" id="celio-bypass"> Bypass the National Dex requirement</label>
+                <p class="fine warn" id="celio-bypass-warning" hidden>Pokémon from Ruby, Sapphire or Emerald may not be tradable out of the Switch's game until it has the National Dex and has finished the Sevii Islands story (Cerulean Cave shows on its town map).</p>
+                <p class="fine"><label for="celio-server">Celio server</label> <input type="text" id="celio-server" spellcheck="false" autocomplete="off"> <button class="quiet" id="celio-server-reset" hidden>Back to the usual one</button></p>
             </details>
         </section>
 

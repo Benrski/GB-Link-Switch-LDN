@@ -6,6 +6,7 @@ import { EspDevice, ESP_FILTERS, FAST_BAUD, newer, reopenPort, sleep } from './e
 import { GbLinkSerial, GbLinkUsb, BOOTROM_VENDOR_ID, GBLINK_VENDOR_ID } from './gblink.js';
 import { Bridge } from './bridge.js';
 import { CableSession } from './cable/session.js';
+import { CELIO_SERVER, CelioSession } from './cable/celio.js';
 import { parseProdKeys } from './keys.js';
 import { loadManifest, fetchBytes } from './manifest.js';
 import { fromHex, toHex } from './trade/bytes.js';
@@ -82,6 +83,9 @@ const state = {
     game: 'wireless',       // the GBA's game: wireless (FRLG, Emerald) | cable (Ruby, Sapphire)
     bypassNationally: false,   // Ruby and Sapphire join even if the Switch's game is not far enough
     bridge: null,           // Bridge, or CableSession for Ruby and Sapphire
+    celio: null,            // CelioSession: in a Celio session, linking once started
+    celioNote: null,        // { text, tone }
+    celioServer: CELIO_SERVER,
     bridgeTimer: null,
     bridgeNote: null,
     wiringNote: null,
@@ -338,9 +342,11 @@ async function refreshEsp() {
     pollSoon();
 }
 
+
 async function dropEsp(problem = null) {
     const device = state.esp;
     if (state.bridge) await stopBridge('The ESP32 board went away.');
+    if (state.celio?.running) await celioLeave({ text: 'The ESP32 board went away, so the Celio session ended.', tone: 'bad' });
     clearInterval(state.pollTimer);
     state.esp = null;
     state.keys = null;
@@ -531,6 +537,7 @@ async function pollSession() {
         return;   // board restarting, retry next poll
     }
     renderSession();
+    renderCelio();
 }
 
 // The board joins as soon as it reads a room and stops reporting advertisements once in,
@@ -600,7 +607,7 @@ function renderSession() {
         } else if (status.conn_state === '2') {
             headline = 'In the Switch’s room. Waiting for the Game Boy Advance.';
             hint = 'On the GBA, choose the same activity and join the group.';
-            if (status.national === '0') hint += ' Emerald cannot trade with this game yet: the Switch player has to finish the Sevii Islands story first (Cerulean Cave shows on the town map once it is done). Until then Emerald says the other trainer is not ready. FireRed and LeafGreen can trade now, and battles work with any game.';
+            if (status.national === '0' && !state.bypassNationally) hint += ' Emerald cannot trade with this game yet: the Switch player has to finish the Sevii Islands story first (Cerulean Cave shows on the town map once it is done). Until then Emerald says the other trainer is not ready. FireRed and LeafGreen can trade now, and battles work with any game.';
             tone = 'good';
         } else {
             headline = 'In the Switch’s room, setting up the session…';
@@ -616,12 +623,12 @@ function renderSession() {
 // once the game has linked on the cable.
 function cableView(cable, status) {
     if (cable.linked) return { headline: 'Ruby or Sapphire and the Switch are linked.', hint: 'Leave the room on both consoles when you are done; the board then gets ready for the next one.', tone: 'good' };
-    if (!status || status.state === 'scan') return { headline: 'Looking for the Switch’s trade room…', hint: 'On the Switch, open the Trade Center in the Direct Corner as the group leader.', tone: '' };
+    if (!status || status.state === 'scan') return { headline: 'Looking for the Switch’s room…', hint: 'On the Switch, open the Trade Center or the Colosseum in the Direct Corner as the group leader.', tone: '' };
     if (status.state !== 'run') return { headline: 'Joining the Switch’s room…', hint: '', tone: '' };
     if (cable.switchNotReady) return { headline: 'The Switch’s game cannot trade with Ruby or Sapphire yet.', hint: 'Ruby and Sapphire trade with FireRed and LeafGreen only once that game has finished the Sevii Islands story (Cerulean Cave shows on its town map). Two Game Boy Advance games have the same rule. Ruby and Sapphire have no message for it, so the GBA says the link partners made different selections.', tone: 'warn' };
     if (cable.tradeReady) return { headline: 'Joining the Switch’s group…', hint: 'Accept the join on the Switch.', tone: 'good' };
     if (cable.cableOpen) return { headline: 'Ruby or Sapphire is linking…', hint: '', tone: 'good' };
-    return { headline: 'In the Switch’s room. Waiting for Ruby or Sapphire.', hint: 'On the Game Boy Advance, talk to the attendant at the middle counter upstairs in a Pokémon Center and choose to trade.', tone: 'good' };
+    return { headline: 'In the Switch’s room. Waiting for Ruby or Sapphire.', hint: 'On the Game Boy Advance, upstairs in a Pokémon Center, talk to the attendant at the middle counter to trade, or the left one for the same kind of battle as on the Switch.', tone: 'good' };
 }
 
 // ---------------------------------------------------------------- adapter: what to show
@@ -937,6 +944,7 @@ async function onAdapterFile(file) {
 
 function bridgeBlocker() {
     if (state.trade) return 'This page is trading with the Switch itself. Disconnect there first.';
+    if (state.celio?.running) return 'This page is linking with Celio. Leave that session first.';
     if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
     if (!state.adapter) return 'Connect the adapter in step 2.';
     if (state.esp.info?.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
@@ -948,7 +956,8 @@ function bridgeBlocker() {
 async function onBridgeStart() {
     if (state.bridge || bridgeBlocker()) return;
     const cable = state.game === 'cable';
-    const bridge = cable ? new CableSession(state.esp, state.adapter, { bypassNationally: state.bypassNationally }) : new Bridge(state.esp, state.adapter);
+    const options = { bypassNationally: state.bypassNationally };
+    const bridge = cable ? new CableSession(state.esp, state.adapter, options) : new Bridge(state.esp, state.adapter, options);
     bridge.addEventListener('failed', (event) => stopBridge(`Stopped: ${describe(event.detail)}`, 'bad'));
     if (cable) {
         bridge.addEventListener('log', (event) => log('cable', event.detail));
@@ -1027,7 +1036,7 @@ async function onWiringCheck() {
 
 // gba: GBA linked with the Switch (adapter and play cards). switch: Switch alone (trade
 // card). Board setup is the same for both.
-const PATHS = ['gba', 'switch'];
+const PATHS = ['gba', 'switch', 'celio'];
 const PATH_STORE = 'gblink-switch-path';
 
 function remembered(key) {
@@ -1042,7 +1051,7 @@ function remember(key, value) {
 }
 
 function pathBusy() {
-    return Boolean(state.bridge || state.trade);
+    return Boolean(state.bridge || state.trade || state.celio?.running);
 }
 
 function choosePath(path, { keep = true } = {}) {
@@ -1070,8 +1079,170 @@ function chooseGame(game) {
 function setBypass(value) {
     state.bypassNationally = value;
     remember(BYPASS_STORE, value ? '1' : null);
-    if (state.bridge instanceof CableSession) state.bridge.setBypass(value);
+    state.bridge?.setBypass(value);
+    state.celio?.setBypass(value);
     render();
+}
+
+// ---------------------------------------------------------------- online with Celio
+
+const CELIO_STORE = 'gblink-switch-celio-server';
+
+function celioServer() {
+    const address = state.celioServer.trim();
+    return /^wss?:\/\/\S+$/.test(address) ? address : null;
+}
+
+// Why the link cannot start, or null.
+function celioBlocker() {
+    if (state.bridge) return 'This page is carrying the link for a Game Boy Advance. Stop that first.';
+    if (state.trade) return 'This page is trading with the Switch itself. Disconnect there first.';
+    if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
+    if (!state.esp.info) return 'Install the firmware in step 1 first.';
+    if (!state.keys?.complete) return 'The board needs its keys from step 1.';
+    if (state.esp.info?.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
+    return null;
+}
+
+function celioNote(text, tone = '') {
+    state.celioNote = text ? { text, tone } : null;
+    renderCelio();
+}
+
+async function celioEnter(join) {
+    if (state.celio) return;
+    const server = celioServer();
+    if (!server) { celioNote('The Celio server’s address has to start with wss:// or ws://.', 'bad'); return; }
+    const code = $('celio-code').value.trim();
+    if (join && !code) return;
+    const session = new CelioSession(state.esp, { server, bypassNationally: state.bypassNationally });
+    session.addEventListener('change', () => { if (state.celio === session) renderCelio(); });
+    session.addEventListener('notice', (event) => { if (state.celio === session || !state.celio) celioNote(event.detail.text, event.detail.tone); });
+    session.addEventListener('log', (event) => log('celio', event.detail));
+    session.addEventListener('refused', (event) => {
+        const text = `${CELIO_REFUSALS[event.detail]} To trade anyway, turn on “Bypass the National Dex requirement” and start a new session.`;
+        setTimeout(() => { if (state.celio === session) celioLeave({ text, tone: 'bad' }); }, CELIO_REFUSAL_END_MS);
+    });
+    session.addEventListener('failed', (event) => { if (state.celio === session) celioLeave({ text: `Stopped: ${describe(event.detail)}`, tone: 'bad' }); });
+    session.addEventListener('ended', () => {
+        if (state.celio !== session) return;
+        state.celio = null;
+        log('page', 'left the Celio session');
+        render();
+    });
+    state.celio = session;
+    celioNote(join ? 'Joining the session…' : 'Creating a session…');
+    try {
+        const id = join ? await session.join(code) : await session.create();
+        log('celio', `${join ? 'joined' : 'created'} session ${id}`);
+        state.celioNote = null;
+        $('celio-code').value = '';
+    } catch (error) {
+        if (state.celio === session) state.celio = null;
+        await session.end();
+        state.celioNote = { text: describe(error), tone: 'bad' };
+    }
+    render();
+}
+
+async function celioStart() {
+    const session = state.celio;
+    if (!session?.sessionId || session.running || celioBlocker()) return;
+    session.esp = state.esp;
+    try {
+        await session.start();
+        log('page', 'linking the Switch with the Celio session');
+        state.celioNote = null;
+    } catch (error) {
+        state.celioNote = { text: describe(error), tone: 'bad' };
+    }
+    render();
+    pollSoon();
+}
+
+async function celioLeave(note = null) {
+    const session = state.celio;
+    state.celio = null;
+    if (session) await session.leave();
+    state.celioNote = note;
+    render();
+}
+
+const ROOMS = { 4: 'Trade Center', 1: 'Colosseum (single battle)', 2: 'Colosseum (double battle)' };
+const CELIO_REFUSALS = {
+    'emerald-not-champion': 'Emerald cannot trade with FireRed or LeafGreen until its player has become Champion.',
+    'switch-not-sevii': 'Emerald cannot trade with the Switch’s game until it has finished the Sevii Islands story (Cerulean Cave shows on the town map).',
+};
+// Time for the other Game Boy Advance to show its own message and close before the session ends.
+const CELIO_REFUSAL_END_MS = 3000;
+const ROOM_OF_LINK_TYPE = { 0x1133: 4, 0x2233: 1, 0x2244: 2 };
+
+// As the parent the board finds and joins the Switch's room and the page joins its group
+// once the other Game Boy Advance has linked; as the child the page opens a group the
+// Switch joins, then links with the other Game Boy Advance.
+function celioView(session, status) {
+    if (!session.role) return { headline: 'Waiting for the Celio server…', hint: 'It decides which side leads once both have pressed Start.', tone: '' };
+    if (session.leading) return celioLeadView(session, status);
+    if (session.linked) return { headline: 'Linked with the other player.', hint: 'Leaving the room on both consoles ends the session.', tone: 'good' };
+    if (!status || status.state === 'scan') return { headline: 'Your Switch leads. Looking for its group…', hint: 'On the Switch: upstairs in a Pokémon Center, the Direct Corner, then the Trade Center or the Colosseum. Become the group leader.', tone: '' };
+    if (status.state !== 'run') return { headline: 'Joining the Switch’s room…', hint: '', tone: '' };
+    if (session.switchNotReady) return { headline: 'The Switch’s game cannot trade with Ruby or Sapphire yet.', hint: 'It has to finish the Sevii Islands story first (Cerulean Cave shows on its town map). The other player’s game says the link partners made different selections.', tone: 'warn' };
+    if (session.tradeReady) return { headline: 'Joining the Switch’s group…', hint: 'Accept the join on the Switch.', tone: 'good' };
+    if (session.cableOpen) return { headline: 'The other player is linking…', hint: '', tone: 'good' };
+    return { headline: 'In the Switch’s room. Waiting for the other player.', hint: 'They talk to the Cable Club attendant for the same room.', tone: 'good' };
+}
+
+function celioLeadView(session, status) {
+    if (session.needsRoom) return { headline: 'Your Switch joins a group this page opens. Which room?', hint: 'Pick the room the Switch player will go to in the Direct Corner. The other player goes to the same one.', tone: 'good' };
+    const room = ROOMS[session.activity];
+    if (session.switchLeft) return { headline: 'The Switch left the group.', hint: 'Leave the session and start a new one to play again.', tone: 'warn' };
+    if (session.linked) return { headline: 'Linked with the other player.', hint: 'Leaving the room on both consoles ends the session.', tone: 'good' };
+    if (session.refused) return { headline: CELIO_REFUSALS[session.refused], hint: 'Ending the session…', tone: 'warn' };
+    if (session.otherChoice !== null) {
+        const theirs = ROOMS[ROOM_OF_LINK_TYPE[session.otherChoice]];
+        return { headline: `The other player chose ${theirs ? `the ${theirs}` : 'another room'}.`, hint: `The Switch is in the ${room}. They talk to the attendant again and choose it, or you both leave and start a new session.`, tone: 'warn' };
+    }
+    if (session.switchKnown) return { headline: 'The Switch is in the group. Waiting for the other player.', hint: `They talk to the Cable Club attendant for the ${room}.`, tone: 'good' };
+    if (session.switchJoined) return { headline: 'The Switch is joining the group…', hint: '', tone: 'good' };
+    if (!status || status.state !== 'host') return { headline: 'Opening a group for the Switch…', hint: 'If the Switch is leading a group, leave it: this time the Switch joins.', tone: '' };
+    return { headline: 'Your Switch joins. On the Switch, join the group called CELIO.', hint: `Upstairs in a Pokémon Center, the Direct Corner, then the ${room}. Join a group; do not lead one.`, tone: 'good' };
+}
+
+function renderCelio() {
+    const session = state.celio;
+    const inSession = Boolean(session?.sessionId);
+    const running = Boolean(session?.running);
+    $('celio-start').hidden = inSession;
+    $('celio-in').hidden = !inSession;
+    $('celio-create').disabled = Boolean(session);
+    $('celio-join').disabled = Boolean(session) || !$('celio-code').value.trim();
+    $('celio-code').disabled = Boolean(session);
+    if (inSession) {
+        $('celio-id').textContent = session.sessionId;
+        $('celio-partner').textContent = session.partner ? 'The other player is in the session.' : 'Waiting for the other player…';
+        $('celio-partner').className = `status ${session.partner ? 'good' : ''}`.trim();
+    }
+    const blocker = celioBlocker();
+    $('celio-link').hidden = running;
+    $('celio-rooms').hidden = !(running && session.needsRoom);
+    $('celio-link').disabled = !session?.partner || Boolean(blocker);
+    const note = state.celioNote ?? (inSession && !running && session.partner && blocker ? { text: blocker, tone: '' } : null);
+    setLine('celio-note', note?.text ?? '', note?.tone ?? '');
+    $('celio-session').hidden = !running;
+    let tone = inSession ? 'busy' : '';
+    if (running) {
+        const view = celioView(session, state.session);
+        $('celio-headline').textContent = view.headline;
+        $('celio-hint').textContent = view.hint;
+        $('celio-session').className = `session ${view.tone}`.trim();
+        tone = view.tone === 'good' ? 'good' : view.tone === 'warn' ? 'warn' : 'busy';
+    }
+    $('celio-dot').className = `dot ${tone}`.trim();
+    $('celio-bypass').checked = state.bypassNationally;
+    $('celio-bypass-warning').hidden = !state.bypassNationally;
+    if (document.activeElement !== $('celio-server')) $('celio-server').value = state.celioServer;
+    $('celio-server').disabled = Boolean(session);
+    $('celio-server-reset').hidden = state.celioServer === CELIO_SERVER;
 }
 
 function renderGame() {
@@ -1081,10 +1252,10 @@ function renderGame() {
         button.disabled = Boolean(state.bridge);
     }
     $('game-note-cable').hidden = !cable;
-    $('bypass-panel').hidden = !cable;
+    $('bypass-panel').hidden = false;
     $('bypass-nationally').checked = state.bypassNationally;
     $('bypass-warning').hidden = !state.bypassNationally;
-    $('play-sub').textContent = cable ? 'Both boards on USB, with this page linking the game to the Switch.' : 'Connect the two boards with three wires, or let this page carry the link.';
+    $('play-sub').textContent = cable ? 'Both boards on USB, with this page linking the game to the Switch.' : 'Let this page carry the link, or connect the two boards with three wires.';
     $('play-standalone').hidden = cable;
     $('consoles-cable').hidden = !cable;
     $('consoles-wireless').hidden = cable;
@@ -1115,6 +1286,7 @@ function tradeBlocker() {
     if (!state.esp.info) return 'Install the firmware in step 1 first.';
     if (!state.keys?.complete) return 'The board needs its keys before it can read the Switch\'s wireless.';
     if (state.bridge) return 'This page is carrying the link for a Game Boy Advance. Stop that first.';
+    if (state.celio?.running) return 'This page is linking with Celio. Leave that session first.';
     if (pooling()) return poolServer() ? null : 'The trade pool server\'s address has to start with wss:// or ws://.';
     if (!state.party.canTrade) return 'Two Pokémon are needed: one to offer and one to keep.';
     return null;
@@ -1555,6 +1727,7 @@ function render() {
     $('bridge-stop').hidden = !state.bridge;
     $('bridge-facts').hidden = !state.bridge?.stats;
     renderGame();
+    renderCelio();
     if (state.bridge) setLine('bridge-status', 'Carrying the link. Keep this tab open and in view.', 'good');
     else if (state.bridgeNote) setLine('bridge-status', state.bridgeNote.text, state.bridgeNote.tone);
     else setLine('bridge-status', blocker ?? 'Ready.');
@@ -1663,6 +1836,27 @@ function wireUp() {
 
     $('play-game').addEventListener('click', (event) => chooseGame(event.target.closest('[data-game]')?.dataset.game));
     $('bypass-nationally').addEventListener('change', (event) => setBypass(event.target.checked));
+    $('celio-bypass').addEventListener('change', (event) => setBypass(event.target.checked));
+    $('celio-create').addEventListener('click', () => celioEnter(false));
+    $('celio-join').addEventListener('click', () => celioEnter(true));
+    $('celio-code').addEventListener('input', () => renderCelio());
+    $('celio-code').addEventListener('keydown', (event) => { if (event.key === 'Enter') celioEnter(true); });
+    $('celio-link').addEventListener('click', celioStart);
+    $('celio-rooms').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-activity]');
+        if (button) state.celio?.chooseRoom(Number(button.dataset.activity));
+    });
+    $('celio-leave').addEventListener('click', () => celioLeave());
+    $('celio-copy').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(state.celio?.sessionId ?? ''); celioNote('Session Id copied', 'good'); }
+        catch { celioNote('Copy it by hand: the browser did not allow copying.', 'warn'); }
+    });
+    $('celio-server').addEventListener('change', (event) => {
+        state.celioServer = event.target.value.trim() || CELIO_SERVER;
+        remember(CELIO_STORE, state.celioServer === CELIO_SERVER ? null : state.celioServer);
+        renderCelio();
+    });
+    $('celio-server-reset').addEventListener('click', () => { state.celioServer = CELIO_SERVER; remember(CELIO_STORE, null); renderCelio(); });
     $('bridge-start').addEventListener('click', onBridgeStart);
     $('bridge-stop').addEventListener('click', () => stopBridge());
     $('wiring-check').addEventListener('click', onWiringCheck);
@@ -1691,7 +1885,7 @@ function wireUp() {
 
     navigator.usb?.addEventListener('connect', onUsbConnect);
     // Release the adapter port if the page closes while bridging.
-    window.addEventListener('pagehide', () => { if (state.bridge) state.bridge.stop(); });
+    window.addEventListener('pagehide', () => { if (state.bridge) state.bridge.stop(); state.celio?.leave(); });
 }
 
 async function start() {
@@ -1702,6 +1896,7 @@ async function start() {
     state.source = remembered(SOURCE_STORE) === 'party' ? 'party' : 'pool';
     state.game = remembered(GAME_STORE) === 'cable' ? 'cable' : 'wireless';
     state.bypassNationally = remembered(BYPASS_STORE) === '1';
+    state.celioServer = remembered(CELIO_STORE) ?? CELIO_SERVER;
     state.poolServer = remembered(SERVER_STORE) || POOL_SERVER;
     loadKept();
     const serial = EspDevice.available();

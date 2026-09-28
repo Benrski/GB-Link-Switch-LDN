@@ -5,8 +5,12 @@ Game Boy Advance or from your PC.
 
 - **GBA to Switch.** A GBA running FireRed, LeafGreen or Emerald joins the Switch's
   Trade Center or Colosseum over the Switch's own local wireless, as if it were another
-  Switch. Trades and battles. Ruby and Sapphire, which have no wireless, trade too: the
-  web page links them by cable and turns that link into the Switch's wireless.
+  Switch. Trades and battles. Ruby and Sapphire, which have no wireless, trade and battle
+  too: the web page links them by cable and turns that link into the Switch's wireless.
+- **Online with Celio.** Trade and battle over the internet with anyone on
+  [Celio](https://celio.gblink.io/): your Switch with their Game Boy Advance
+  (Ruby, Sapphire, Emerald, FireRed or LeafGreen on a GB-Link or in an emulator), or with
+  another Switch through this page. You need only the ESP32 board.
 - **PC to Switch.** Only have a Switch? All you need is an ESP32 board, no GBA and no
   GB-Link. Trade with the Switch from the web page, from an online Wonder Trade pool or
   from your own `.pk3` files.
@@ -81,10 +85,20 @@ Switch.
 ### Ruby and Sapphire
 
 Pick *Ruby, Sapphire* in the Play step and press *Start*, with both boards on USB. Lead a
-Trade Center group on the Switch, then on the GBA talk to the attendant at the middle
-counter upstairs in a Pokémon Center and choose to trade. The page joins the Switch's
-group once the GBA has linked; accept the join on the Switch. Trades only, and the Switch
-always leads.
+Trade Center or Colosseum (single or double battle) group on the Switch, then on the GBA
+talk to the attendant upstairs in a Pokémon Center: the middle counter to trade, the left
+one for the same kind of battle. The page joins the Switch's group once the GBA has
+linked; accept the join on the Switch. The Switch always leads.
+
+### Online with Celio
+
+Pick *Online with Celio* at the top of the page. Create a session and send its Session Id
+to a Celio user, or join theirs; Game Boy Advance and emulator players connect at
+<https://celio.gblink.io/>, another Switch player uses this page. Press
+*Start* once they have joined. The Celio server decides which side leads: the page then
+says whether to lead a group on the Switch or to join the one it opens, and in that case
+asks which room the Switch goes to. The other player talks to their Cable Club attendant
+for the same room. Leaving the room on both consoles ends the session.
 
 ### PC to Switch
 

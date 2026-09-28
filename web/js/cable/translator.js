@@ -60,9 +60,17 @@ const KEY_RATE_WINDOW = 40;
 const HOST_KEY_LAG = 12;
 
 const AIR = { SEARCH: 0, CONNECTING: 1, NI: 2, UNI: 3 };
+// Union-room activities, from the link type the game opens its Cable Club link with.
+const ACTIVITY = { TRADE: 4, BATTLE_SINGLE: 1, BATTLE_DOUBLE: 2 };
+const LINKTYPE = { SINGLE_BATTLE: 0x2233, DOUBLE_BATTLE: 0x2244, BATTLE: 0x2211 };
+const LP_ID_OFFSET = 16 + 0x18;
+const LINK_PLAYER_SIZE = 28;         // struct LinkPlayer, as the Switch sends it at a battle's start
+// Colosseum: in the room, the game closing its link for the battle, in the battle, and the
+// game closing it again after the battle.
+const BATTLE = { ROOM: 0, STARTING: 1, FIGHTING: 2, RETURNING: 3 };
 const EXPECT = { NONE: 0, LINK_PLAYER: 1, PULL: 2, CARD: 3 };
 const BAR = { IDLE: 0, STANDBY: 1, CLOSE: 2 };
-const PURPOSE = { NONE: 0, ROUND0: 1, GAME_STANDBY: 2, GAME_CLOSE: 3, EXIT_CLOSE: 4 };
+const PURPOSE = { NONE: 0, ROUND0: 1, GAME_STANDBY: 2, GAME_CLOSE: 3, EXIT_CLOSE: 4, BATTLE: 5 };
 const SEND = { INIT: 0, STREAM: 1, HOLD: 2, DONE: 3 };
 
 const KEY_EMPTY = 0x11;
@@ -76,7 +84,21 @@ const MAGIC = Array.from('GameFreak inc.', (c) => c.charCodeAt(0));
 function fragCount(bytes) { return Math.max(1, Math.ceil(bytes / FRAG_BYTES)); }
 
 // Block sizes by fragment count; the counts the cable club and trade menu use are unique.
-function sizeFromCount(count) {
+// A trainer card for a player, from their LinkPlayer: gender, trainer id and name, the fields
+// of the first 0x38 bytes every Gen 3 game reads from a partner's card.
+export function cardFromLinkPlayer(lp) {
+    const out = new Uint8Array(CARD_SIZE);
+    out[0x00] = lp[16 + 0x13];
+    out[0x02] = 1;
+    out[0x0e] = lp[LP_TRAINER_ID_OFFSET];
+    out[0x0f] = lp[LP_TRAINER_ID_OFFSET + 1];
+    let i = 0;
+    for (; i < 7 && lp[LP_NAME_OFFSET + i] !== 0xff; i++) out[0x30 + i] = lp[LP_NAME_OFFSET + i];
+    out[0x30 + i] = 0xff;
+    return out;
+}
+
+export function sizeFromCount(count) {
     switch (count) {
         case 17: return 200;
         case 9: return 100;
@@ -87,7 +109,7 @@ function sizeFromCount(count) {
     return count * FRAG_BYTES;
 }
 
-function sizeFromRequest(type) {
+export function sizeFromRequest(type) {
     switch (type) {
         case 2: return 100;
         case 3: return 220;
@@ -98,7 +120,7 @@ function sizeFromRequest(type) {
 
 // The Switch's key reports as runs of one code, played back by time: each cable packet takes
 // `step` frames' worth. Every run is played at least once, so a single-frame press is never lost.
-class KeyRuns {
+export class KeyRuns {
     constructor() { this.runs = []; }
     push(code) {
         const last = this.runs.at(-1);
@@ -123,7 +145,7 @@ class KeyRuns {
     clear() { this.runs = []; }
 }
 
-class KeyQueue {
+export class KeyQueue {
     constructor() { this.codes = []; }
     push(code) {
         if (this.codes.length >= KEY_QUEUE) this.codes.shift();
@@ -384,6 +406,7 @@ export class CableTranslator {
         this.expect = EXPECT.NONE;
         this.pullType = 0;
         this.sessionRubyLP = false;
+        this.linkClosing = false;        // this side has closed the cable link: blocks wait
         this.p0LPDelivered = false;
         this.rxSize = 0;
         this.rxPos = 0;
@@ -394,10 +417,21 @@ export class CableTranslator {
         this.hostNotReady = false;   // the Switch's trade group is not open to Ruby yet
         this.refusing = false;       // the game was told the link-up failed and is closing
         this.bypassNationally = false;   // join even if the Switch's game cannot link nationally
+        this.activity = ACTIVITY.TRADE;  // the Switch group to join, from the game's choice
+        this.battleState = BATTLE.ROOM;
+        this.battleRound = false;        // a standby round for the Switch is due once our blocks are out
         this.onLinked = null;     // (linked) wireless link up or down, or hostNotReady changed
     }
 
     get linked() { return this.link === AIR.UNI; }
+    // The cable game's version (Ruby 2, Sapphire 1, Emerald 3, FireRed 4, LeafGreen 5).
+    get gameVersion() { return this.rubyLP[LP_VERSION_OFFSET]; }
+    // Ruby and Sapphire have no wireless and are shown to the Switch as an Emerald; the
+    // other games as themselves.
+    get dressed() { return this.gameVersion === 1 || this.gameVersion === 2; }
+    get battle() { return this.activity !== ACTIVITY.TRADE; }
+    // Battle blocks are self-describing and padded to 4 bytes: pass whole fragments.
+    get battleBlocks() { return this.battle && this.battleState !== BATTLE.ROOM; }
     get joined() { return this.link >= AIR.CONNECTING; }
 
     // ---- cable queue
@@ -407,7 +441,11 @@ export class CableTranslator {
         this.cq.push(cmd);
     }
 
-    cablePushCmd(c0, c1, c2) { this.cablePush([c0, c1, c2, 0, 0, 0, 0, 0]); }
+    cablePushCmd(c0, c1, c2) {
+        // Once this side has closed the link, blocks wait for the next one.
+        if (c0 === LINKCMD.READY_CLOSE_LINK) this.linkClosing = true;
+        this.cablePush([c0, c1, c2, 0, 0, 0, 0, 0]);
+    }
 
     // A block for the game as player 0: INIT_BLOCK, then CONT_BLOCK chunks of seven words.
     cablePushBlock(data, size) {
@@ -440,10 +478,12 @@ export class CableTranslator {
     buildLinkPlayerForHost() {
         const out = new Uint8Array(LP_BUFFER_SIZE);
         out.set(this.rubyLP);
-        put16(out, LP_VERSION_OFFSET, 0x4000 | VERSION_EMERALD);
-        out[LP_PROGRESS_OFFSET] = PROGRESS_CLEARED;
-        out[LP_PROGRESS_OFFSET + 1] = 0;
-        out[LP_PROGRESS_OFFSET + 2] = PROGRESS_CLEARED;
+        if (this.dressed) {
+            put16(out, LP_VERSION_OFFSET, 0x4000 | VERSION_EMERALD);
+            out[LP_PROGRESS_OFFSET] = PROGRESS_CLEARED;
+            out[LP_PROGRESS_OFFSET + 1] = 0;
+            out[LP_PROGRESS_OFFSET + 2] = PROGRESS_CLEARED;
+        }
         out.fill(0, LP_LINK_TYPE_OFFSET, LP_LINK_TYPE_OFFSET + 4);
         return out;
     }
@@ -454,12 +494,27 @@ export class CableTranslator {
         if (!this.haveHostLP || !this.sessionRubyLP || this.p0LPDelivered) return;
         const block = this.hostLP.slice();
         block.set(this.rubyLP.subarray(LP_LINK_TYPE_OFFSET, LP_LINK_TYPE_OFFSET + 4), LP_LINK_TYPE_OFFSET);
+        // Emerald's cable club checks a FireRed/LeafGreen partner's progress; with the bypass
+        // on, the Switch player reaches it as another Emerald, which it does not check.
+        if (this.bypassNationally && this.gameVersion === VERSION_EMERALD) put16(block, LP_VERSION_OFFSET, 0x4000 | VERSION_EMERALD);
+        // In the Colosseum the id is the spot each player stands on; there are two.
+        if (this.battle) block[LP_ID_OFFSET] = this.rubyLP[LP_ID_OFFSET] ^ 1;
         this.cablePushBlock(block, block.length);
         this.p0LPDelivered = true;
         this.readyAt = this.cablePackets + SESSION_SETTLE_PACKETS;
         if (!this.cardRequested && !this.roomClosed && this.closeCount === 0 && !this.cancelReturn) {
             this.cardArmed = true;
             this.cardAt = this.cablePackets + 15;
+        }
+        if (this.battleState === BATTLE.RETURNING) {
+            // Back in the Colosseum after a battle: keys without a standby from the game; the
+            // Switch has one of its own before its keys resume.
+            this.battleState = BATTLE.ROOM;
+            this.exitKeySeen = false;
+            this.hostKeys.clear();
+            this.keysActive = true;
+            this.dueRound('back in the Colosseum');
+            this.log('back in the Colosseum after the battle: keys resume');
         }
         if (this.cancelReturn) {
             // Back in the room after a cancelled trade: the game sends keys without a standby.
@@ -480,8 +535,11 @@ export class CableTranslator {
         this.log(`LinkPlayers exchanged both ways: standby round ${this.bar.localCount}`);
     }
 
+    // Blocks for the game wait while its link is between sessions: from a battle's start until
+    // the battle's link is up, and from its end until the room's is.
     sessionReady() {
-        return this.sessionRubyLP && this.p0LPDelivered && this.cablePackets >= this.readyAt;
+        if (this.battle && (this.battleState === BATTLE.STARTING || this.battleState === BATTLE.RETURNING)) return false;
+        return !this.linkClosing && this.sessionRubyLP && this.p0LPDelivered && this.cablePackets >= this.readyAt;
     }
 
     requestFromGame(type) {
@@ -506,18 +564,7 @@ export class CableTranslator {
 
     // A trainer card made from the leader's LinkPlayer, so the game can leave its "awaiting
     // link-up" screen while the leader is still entering the room.
-    buildHostCard() {
-        const out = new Uint8Array(CARD_SIZE);
-        const lp = this.hostLP;
-        out[0x00] = lp[16 + 0x13];
-        out[0x02] = 1;
-        out[0x0e] = lp[LP_TRAINER_ID_OFFSET];
-        out[0x0f] = lp[LP_TRAINER_ID_OFFSET + 1];
-        let i = 0;
-        for (; i < 7 && lp[LP_NAME_OFFSET + i] !== 0xff; i++) out[0x30 + i] = lp[LP_NAME_OFFSET + i];
-        out[0x30 + i] = 0xff;
-        return out;
-    }
+    buildHostCard() { return cardFromLinkPlayer(this.hostLP); }
 
     requestEarlyCard() {
         if (this.expect !== EXPECT.NONE) {
@@ -569,7 +616,11 @@ export class CableTranslator {
 
     // A block the leader finished sending.
     hostBlock(count, data) {
-        const size = sizeFromCount(count);
+        if (this.battle && count === fragCount(LINK_PLAYER_SIZE) && data[1] === 0x40 && data[0] >= 1 && data[0] <= 5) {
+            this.hostBattleLinkPlayer(data);
+            return;
+        }
+        const size = this.battleBlocks ? count * FRAG_BYTES : sizeFromCount(count);
         if (count === 17 && !this.haveHostLP && MAGIC.every((c, i) => data[i] === c)) {
             this.hostLP.set(data.subarray(0, LINK_PLAYER_BLOCK_SIZE));
             this.haveHostLP = true;
@@ -578,7 +629,9 @@ export class CableTranslator {
             this.maybeStartRound0();
             return;
         }
-        if (count === 9) {
+        if (this.battleBlocks) {
+            // Battle data, relayed as is.
+        } else if (count === 9) {
             // Trainer card: the first 0x38 bytes are the same in every Gen 3 game.
             if (this.cardSynth) {
                 this.log('leader\'s trainer card received: not needed, the game already has one');
@@ -608,7 +661,17 @@ export class CableTranslator {
         if (this.expect === EXPECT.LINK_PLAYER && size >= LINK_PLAYER_BLOCK_SIZE) {
             this.rubyLP.set(data.subarray(0, LINK_PLAYER_BLOCK_SIZE));
             this.haveRubyLP = true;
-            if (!this.joined) this.hostNotReady = false;   // decided again from the room's next beacon
+            if (!this.joined) {
+                this.hostNotReady = false;   // decided again from the room's next beacon
+                const type = le16(data, LP_LINK_TYPE_OFFSET);
+                this.activity = type === LINKTYPE.SINGLE_BATTLE ? ACTIVITY.BATTLE_SINGLE
+                    : type === LINKTYPE.DOUBLE_BATTLE ? ACTIVITY.BATTLE_DOUBLE : ACTIVITY.TRADE;
+                this.battleState = BATTLE.ROOM;
+            }
+            if (this.battleState === BATTLE.STARTING && le16(data, LP_LINK_TYPE_OFFSET) === LINKTYPE.BATTLE) {
+                this.battleState = BATTLE.FIGHTING;
+                this.log('the game opened its link for the battle');
+            }
             this.sessionRubyLP = true;
             this.expect = EXPECT.NONE;
             this.log(`game's LinkPlayer received (version ${hex(le16(data, LP_VERSION_OFFSET))}, link type ${hex(le16(data, LP_LINK_TYPE_OFFSET))})`);
@@ -618,8 +681,12 @@ export class CableTranslator {
         }
         if (this.expect === EXPECT.CARD && size >= CARD_SIZE) {
             this.rubyCard.fill(0);
-            this.rubyCard.set(data.subarray(0, CARD_VERSION_OFFSET));
-            this.rubyCard[CARD_VERSION_OFFSET] = VERSION_EMERALD;
+            if (this.dressed) {
+                this.rubyCard.set(data.subarray(0, CARD_VERSION_OFFSET));
+                this.rubyCard[CARD_VERSION_OFFSET] = VERSION_EMERALD;
+            } else {
+                this.rubyCard.set(data.subarray(0, CARD_SIZE));
+            }
             this.haveRubyCard = true;
             this.expect = EXPECT.NONE;
             this.log('game\'s trainer card received');
@@ -628,13 +695,15 @@ export class CableTranslator {
         }
         const block = new Uint8Array(MAX_BLOCK_BYTES);
         let use = size;
+        let card = false;
         if (this.expect === EXPECT.PULL) {
+            card = this.pullType === 2;
             use = sizeFromRequest(this.pullType);
             this.expect = EXPECT.NONE;
             this.log(`game answered pull ${this.pullType} with ${size} bytes`);
         }
         block.set(data.subarray(0, Math.min(size, MAX_BLOCK_BYTES)));
-        if (use === CARD_SIZE) {
+        if (card && this.dressed) {
             // Ruby's card is the 0x38-byte RSE layout; the fields after it stay empty.
             block.fill(0, CARD_VERSION_OFFSET);
             block[CARD_VERSION_OFFSET] = VERSION_EMERALD;
@@ -691,6 +760,10 @@ export class CableTranslator {
             this.cablePushCmd(LINKCMD.READY_CLOSE_LINK, 0, 0);
             return;
         }
+        if (this.battle && !(this.exitKeySeen && this.battleState === BATTLE.ROOM)) {
+            this.battleClose();
+            return;
+        }
         if (this.exitKeySeen && !this.cancelPending && !this.roomClosed) {
             // Leaving the room: the leader closes rather than standing by.
             this.log('game close after EXIT_ROOM: closing the wireless link');
@@ -717,6 +790,61 @@ export class CableTranslator {
             this.closeCount++;
         }
         barrierInitiate(this.bar, BAR.STANDBY);
+    }
+
+    // The Colosseum. Ruby closes its cable link to start a battle and again after it, and opens
+    // a new one each time. The Switch keeps its wireless link: at the start it exchanges
+    // LinkPlayers as blocks and runs a standby round, after the battle it runs one standby
+    // round, and another once back in the room. Over wireless the child speaks first in a
+    // standby round, so those rounds are started here.
+    battleClose() {
+        this.cablePushCmd(LINKCMD.READY_CLOSE_LINK, 0, 0);
+        this.keysActive = false;
+        if (this.battleState === BATTLE.ROOM || this.battleState === BATTLE.STARTING) {
+            this.battleState = BATTLE.STARTING;
+            this.log('the game closed its link to start the battle');
+        } else {
+            this.battleState = BATTLE.RETURNING;
+            this.dueRound('the battle ended');
+            this.log('the game closed its link after the battle');
+        }
+    }
+
+    // A standby round for the Switch, started once our queued blocks are out: a round and a
+    // block never share the link.
+    dueRound(why) {
+        this.battleRound = true;
+        this.battleRoundWhy = why;
+    }
+
+    startDueRound() {
+        if (!this.battleRound || this.bar.mode !== BAR.IDLE || this.send.active || this.childQueue.length) return;
+        this.battleRound = false;
+        this.purpose = PURPOSE.BATTLE;
+        barrierInitiate(this.bar, BAR.STANDBY);
+        this.log(`standby round ${this.bar.localCount} for the Switch: ${this.battleRoundWhy}`);
+    }
+
+    // The Switch's LinkPlayer at a battle's start: answered with the game's, as an Emerald on
+    // the other spot. A standby round follows once it is out.
+    hostBattleLinkPlayer(data) {
+        const out = new Uint8Array(LINK_PLAYER_SIZE);
+        out.set(this.rubyLP.subarray(16, 16 + LINK_PLAYER_SIZE));
+        if (this.dressed) {
+            put16(out, 0, 0x4000 | VERSION_EMERALD);
+            out[0x10] = PROGRESS_CLEARED;
+            out[0x11] = 0;
+            out[0x12] = PROGRESS_CLEARED;
+        }
+        put16(out, 0x14, LINKTYPE.BATTLE);
+        out[0x16] = 0; out[0x17] = 0;
+        out[0x18] = data[0x18] ^ 1;
+        out[0x19] = 0;
+        this.childQueuePush(out, LINK_PLAYER_SIZE, false);
+        this.childQueue.at(-1).isBattleLP = true;
+        if (this.battleState === BATTLE.ROOM) this.battleState = BATTLE.STARTING;
+        this.keysActive = false;
+        this.log(`the Switch started the battle from spot ${data[0x18]}`);
     }
 
     exitClosePassed() {
@@ -762,10 +890,16 @@ export class CableTranslator {
                     }
                 }
                 break;
+            case PURPOSE.BATTLE:
+                this.purpose = PURPOSE.NONE;
+                // The Switch reaches its standby when its own screens are done: keep asking.
+                if (this.bar.timedOut) this.dueRound('the Switch had not reached it yet');
+                break;
             default:
                 this.purpose = PURPOSE.NONE;
                 break;
         }
+        this.bar.timedOut = false;
         this.flushPendingStandby();
     }
 
@@ -835,6 +969,7 @@ export class CableTranslator {
             if (++b.sinceInitiate > INITIATE_TIMEOUT) {
                 b.mode = BAR.IDLE;
                 b.initiated = false;
+                b.timedOut = true;
                 this.log(`barrier: standby unanswered for ${INITIATE_TIMEOUT} frames, released (count held at ${b.localCount})`);
                 return true;
             }
@@ -856,9 +991,10 @@ export class CableTranslator {
         const lp = this.rubyLP;
         const out = new Uint8Array(26);
         put16(out, 0, 2);
-        put16(out, 2, 2 | COMPAT_CAN_LINK_NATIONALLY | (1 << 8) | (1 << 9) | (VERSION_EMERALD << 10));
+        const version = this.dressed ? VERSION_EMERALD : this.gameVersion;
+        put16(out, 2, 2 | COMPAT_CAN_LINK_NATIONALLY | (1 << 8) | (1 << 9) | (version << 10));
         put16(out, 4, le16(lp, LP_TRAINER_ID_OFFSET));
-        out[12] = 4 | 0x80;
+        out[12] = this.activity | 0x80;
         let i = 0;
         for (; i < 7 && lp[LP_NAME_OFFSET + i] !== 0xff; i++) out[17 + i] = lp[LP_NAME_OFFSET + i];
         out[17 + i] = 0xff;
@@ -876,7 +1012,13 @@ export class CableTranslator {
         if (was !== this.linked) this.onLinked?.(this.linked);
     }
 
+    // Everything that belongs to one wireless link: the Switch player's LinkPlayer and blocks
+    // held for the game are never carried into the next.
     resetLink() {
+        this.haveHostLP = false;
+        this.hostLP.fill(0);
+        this.held = [];
+        this.pendingPull = -1;
         this.tag = 0;
         this.keyCount = 0;
         this.rx0 = newRecv();
@@ -896,6 +1038,8 @@ export class CableTranslator {
         this.pendingGameStandby = false;
         this.round0Started = false;
         this.keysActive = false;
+        this.battleRound = false;
+        this.battleState = BATTLE.ROOM;
         this.rubyKeys.clear();
         this.hostKeys.clear();
         this.lastHostKeyCount = -1;
@@ -908,7 +1052,7 @@ export class CableTranslator {
     startSearch() {
         this.setLink(AIR.SEARCH);
         this.linkFrames = 0;
-        this.log('looking for the Switch\'s trade group');
+        this.log(`looking for the Switch's ${['', 'single-battle', 'double-battle', '', 'trade'][this.activity]} group`);
     }
 
     // Frames from the board: room beacons, the join's answer, the Switch's frames.
@@ -918,12 +1062,14 @@ export class CableTranslator {
             const occupied = (header >> 16) & 1;
             // RfuGameData: word 3's low byte is the activity (trade = 4).
             const word3 = ((frame[24] << 24) | (frame[25] << 16) | (frame[26] << 8) | frame[27]) >>> 0;
-            if (occupied || (word3 & 0x7f) !== 4) return;
+            if (occupied || (word3 & 0x7f) !== this.activity) return;
             // Emerald joins a FireRed or LeafGreen trade group only once that game can link
             // nationally (its Sevii Islands story is done). A real Ruby and FireRed have the
             // same rule, checked by FireRed.
             const compat = frame[13] | (frame[12] << 8);
-            const ready = this.bypassNationally || (compat & COMPAT_CAN_LINK_NATIONALLY) !== 0;
+            // Only Ruby and Sapphire need this here: they have no check of their own, while
+            // Emerald checks in its cable club and FireRed/LeafGreen need nothing.
+            const ready = this.battle || !this.dressed || this.bypassNationally || (compat & COMPAT_CAN_LINK_NATIONALLY) !== 0;
             if (ready !== !this.hostNotReady) {
                 this.hostNotReady = !ready;
                 if (!ready) this.log('the Switch\'s game cannot link with Ruby or Sapphire yet: not joining');
@@ -931,7 +1077,7 @@ export class CableTranslator {
             }
             if (!ready) return;
             this.hostId = header & 0xffff;
-            this.log(`trade group ${hex(this.hostId)} found: joining`);
+            this.log(`the Switch's group ${hex(this.hostId)} found: joining`);
             this.setLink(AIR.CONNECTING);
             this.linkFrames = 0;
             this.connectFrames = 0;
@@ -971,12 +1117,14 @@ export class CableTranslator {
     // The child's slot for this frame; all zero is an idle frame.
     chooseSlot(words) {
         words.fill(0);
+        this.startDueRound();
         if (barrierWant(this.bar, words)) return;
         if (this.bar.mode !== BAR.IDLE) return;
         if (!this.send.active && this.childQueue.length) {
             const block = this.childQueue.shift();
             sendStart(this.send, block.data, block.size, block.isLinkPlayer);
             this.send.isCard = block.isCard;
+            this.send.isBattleLP = Boolean(block.isBattleLP);
             this.rx1 = newRecv();
             this.log(`sending a block of ${block.size} bytes (${this.send.count} fragments)`);
         }
@@ -991,6 +1139,9 @@ export class CableTranslator {
                 this.lpSendDone = true;
                 this.log('LinkPlayer acknowledged by the Switch');
                 this.maybeStartRound0();
+            } else if (!this.send.active && this.send.isBattleLP) {
+                this.log('our LinkPlayer acknowledged by the Switch');
+                this.dueRound('the battle starts');
             } else if (!this.send.active) {
                 this.log('block acknowledged by the Switch');
             }
@@ -1141,6 +1292,7 @@ export class CableTranslator {
 
     // The game opened its cable link from scratch.
     cableReset() {
+        this.linkClosing = false;
         this.cablePackets = 0;
         this.readyAt = 0;
         this.announced = false;

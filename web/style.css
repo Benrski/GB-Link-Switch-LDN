@@ -42,7 +42,7 @@ code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-si
 a { color: var(--accent); }
 
 /* The page's two trees: what is linked with the Switch decides which cards follow. */
-.paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px; margin-top: 22px; }
+.paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; margin-top: 22px; }
 .path {
     display: grid; gap: 3px; align-content: start; text-align: left;
     padding: 14px 16px; border-radius: 14px;
@@ -150,7 +150,22 @@ ol.fine { padding-left: 1.3em; }
 ol.fine li { margin: 4px 0; }
 
 .more { margin-top: 16px; }
-.more summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.more summary {
+    cursor: pointer; list-style: none;
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 7px 14px 7px 12px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+    color: var(--text); font-size: 0.9rem; font-weight: 600;
+}
+.more summary::-webkit-details-marker { display: none; }
+.more summary::before {
+    content: ""; width: 7px; height: 7px;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(-45deg); transition: transform 0.15s;
+}
+.more[open] > summary::before { transform: rotate(45deg); }
+.more summary:hover { border-color: var(--accent); }
+.more summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .more input[type=file] { color: var(--muted); font-size: 0.85rem; max-width: 100%; }
 .more input[type=text] {
     font: inherit; font-size: 0.85rem; color: var(--text);
@@ -280,3 +295,8 @@ footer p { color: var(--muted); font-size: 0.82rem; }
 @media (max-width: 1000px) {
     body:has(#gblink-launcher-return) .masthead { padding-top: 56px; }
 }
+
+.celio-join input[type=text] { flex: 1 1 14em; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
+#celio-activity { margin-left: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
+#celio-activity:disabled { opacity: 0.55; }
+.celio-id { margin: 16px 0 0; overflow-wrap: anywhere; }
