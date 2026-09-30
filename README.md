@@ -16,8 +16,8 @@ Game Boy Advance or from your PC.
   from your own `.pk3` files.
 - **Mystery Gift.** Send Wonder Cards to the Switch from the web page: Nintendo's FireRed
   and LeafGreen event distributions, the Project Wonder events, and the GB-Link Team's
-  cards (speed up or slow down, event Pokémon, the Physical/Special split, the Pocket
-  Casino and more). You need only the ESP32 board.
+  cards (speed up or slow down, event Pokémon, Espeon and Umbreon, HM moves without HMs,
+  the Physical/Special split, the Pocket Casino and more). You need only the ESP32 board.
 
 Everything is set up and played from **<https://switch.gblink.io>**.
 

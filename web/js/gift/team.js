@@ -219,6 +219,66 @@ CA==`), {
         },
     },
     {
+        id: 'custom-pc-anywhere',
+        label: 'PC Anywhere (Press R)',
+        description: 'Press R in the field to open the Pokémon Storage System, the boxes you normally reach from a Pokémon Center’s PC: withdraw, deposit and move Pokémon and their items, then SEE YA! takes you back to where you were. It stays off in the Union Room. R no longer opens the Help menu while it’s on (L still does). It lasts until the game is closed or reset; talk to the deliveryman again to turn it off.',
+        payloads: {
+            ...romPayloads(decodeBase64(`KgSJAEIAAAAMAMq9ALvI09HCv8y////////////////////////////////////////T4+nmANbj
+7NnnuADj4tkA1uno6OPiANXr1e3/////////////////yubZ5+cAzADd4gDo3NkA2t3Z4NgA6OMA
+6efZ/////////////////+3j6eYAyr205wDKycUbx8nIANbj7NnnrQDQ3efd6P/////////////o
+3NkA2Nng3erZ5u3h1eIA4+IA6NzZAKPi2P//////////////////2uDj4+YA49oA1QDKycUbx8nI
+AL2/yM6/zK3//////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFowAACB+vAAAIRbsFowAACB+8AAAICrsFowAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARx9g/wMCAbsBdAAACL2tAAAIZm4UCCENgAAAuwGZAAAIIxUQAANHAb3jAAAIZm1obAK9HgEA
+CGZuFAghDYABALsBmQAACCMVEAADWAG9PQEACGZtaGwCvWEBAAhmbWhsAr11AQAIZm1obALN3NXg
+4ADDAODZ6ADt4+kA4+TZ4gDo3NkAyr3+693o3ADMuADr3Nnm2erZ5gDt4+kA1ebZrP++4+LZqwDK
+5tnn5wDMAN3iAOjc2QDa3dng2ADo4/7p59kA6NzZAMq9uADp4ujd4ADt4+kA5tnn2eit/8q9ALvi
+7evc2ebZAN3nAOPirf7F2dnkAN3oAOPirP+81dffAOjjAOjc2QDKvecA3eIAysnFG8fJyP69v8jO
+v8zNq/+94+HZANbV198A1eLtAOjd4dmr/87c3ecA293a6ADY49nn4rToAOvj5t8A693o3P7o3N3n
+AOrZ5ufd4+IA49oA6NzZANvV4dmt/wBwtRFLHogAIBiAEE0SpCsggAAEOCFYKVD70Q1MASAgcAxI
+AWhLG5sKAtBhYGkcAWAFSx6AcL0GSAAhAXABSAFwcEfARnHxAwIIAgAEAPwDAmD/AwLgJwADkLUb
+TCB4ACgq0BpPuIvABybRGUgBIQFw+I1ACiDTOGgXSYhCHNF4aBZJiEIY0RZIAHgAKBTRFUgAeAIo
+ENEUSMB4ACgM0Q1IAHgCKAjSEUsA8Az4ACgD0RBID0sA8Ab4Y2gA8AP4kLwBvABHGEfARmD/AwKA
+IwADcfEDAvatAwLtnAUIbZ0FCJwQAAOoDwADdHADAj3sEQhx0gYIoPwDAmkvAgAlPAAnawLARg==`), {
+                'BPGE 1.10': decodeBase64(`XAEBR+gDARU=`),
+            }),
+        },
+    },
+    {
+        id: 'custom-hm-moves',
+        label: 'HM Moves Without HMs',
+        description: 'With the badge that allows each move, your party uses Cut, Rock Smash, Strength, Surf and Waterfall without any Pokémon knowing it: talk to the tree, rock or boulder, or press A facing the water, as usual. The first Pokémon in your party that isn’t an Egg does the work. Dark caves light up by themselves once you have the Boulder Badge, as Flash would light them. It lasts until the game is closed or reset; talk to the deliveryman again to turn it off.',
+        payloads: {
+            ...romPayloads(decodeBase64(`LASDAEQAAAAAAMLHAMfJ0L/NuADIyQDCx+f////////////////////////////////T4+nmANbV
+2NvZ5wDV5tkA2eLj6dvc////////////////////////vc/OuADNz8zAuADNzsy/yMHOwgDV4tgA
+4ePm2bj//////////////+LjAMrJxRvHycgA4tnZ2OcA6OMA3+Lj6wDo3Nnhrf/////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFogAACB+vAAAIRbsFogAACB+8AAAICrsFogAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARx9g/wMCAbsBdAAACL2sAAAIZm4UCCENgAAAuwGYAAAIIxUQAAMzAb3YAAAIZm1obAK9EQEA
+CGZuFAghDYABALsBmAAACBEAYP8DAr02AQAIZm1obAK9TAEACGZtaGwCvWABAAhmbWhsAtHV4ugA
+6OMA6efZAMLHAOHj6tnnAOvd6Nzj6ej+6NnV19zd4tsA6NzZ4az/vuPi2asA0+Pp5gDW1djb2ecA
+1ebZANXg4ADt4+n+4tnZ2ADi4+u4AOni6N3gAO3j6QDm2efZ6K3/yOMAwsfnAOLZ2djZ2ADi4+ut
+/sXZ2eQA3egA6NzV6ADr1e2s/7zV198A6OMA6NnV19zd4tsAwsfnq/+94+HZANbV198A1eLtAOjd
+4dmr/87c3ecA293a6ADY49nn4rToAOvj5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt
+/wAAMLUKTQykgCCAAAQ4IVgpUPvRB0wBICBwBkgBaEsbmwoC0GFgaRwBYDC9wEYA/AMCYP8DAuAn
+AAPwtVlMWU+4i8AHGtEAJiB4ACgV0HhoVkmIQhHRVUgAeAIoDdIA8BL4APA9+AYAYXgIQAXQAPBG
++AAoAdEA8HL4ZnBjaPC8AbyGRhhHYLVOTSh4ASgm0ehoXaYEIzFoiEID0Aw2ATv50RzgMIkA8Hr4
+ACgX0LB6ACgE0E1LAPBz+AAoD9AA8GH4/ygL0ERJCIBwaE2hSIAADIiAqWAAIChwASBocGC9ACA5
+SQl4ACkI0TZJCXgCKQTRNknJeAApANEBIHBHILX4jUAIKdOBsGhGgRwpSwDwR/hqRhCIUYgBsCZL
+APBA+CZLAPA9+CVNACgQ0TJIAPA2+AAoEdArSwDwMvgAKAzQLE0A8B/4/ygH0CNJCIAoACRLAPAl
++AEgIL0AICC9ALUcSEB9ASgM0SVIAPAY+AAoB9EhSADwE/gAKALQHEsA8A/4AL0USQAgynxSB1IP
+AioE0GQxATAGKPbR/yBwRw9LGEdg/wMCgCMAA22dBQj2rQMCmfwFCB3HBQht1AUIFaIaCLAPAAOo
+DwADnBAAA3RwAwL4bQMCgEICAsxwAwI9HgcIcdIGCFUABggxAAYIJdMMCOyhGggkCAAAIAgAAAYI
+AABoBQAAAADARpIWHAg8FhwIIQgAAJwXHAg1FxwIJQgAAJAYHAhPGBwIIwgAAAsaHAjXGRwIJggB
+AA==`), {
+                'BPGE 1.10': decodeBase64(`XAEBR6QEAvGh1AQF+dIMCMjwBAVuFhwIGPwEBXgXHAgRCAUFbBgcCCsUBQXnGRwIsw==`),
+            }),
+        },
+    },
+    {
         id: 'custom-no-encounters',
         label: 'No Wild Encounters & Repel',
         description: 'Choose which wild Pokémon stay away: ALL OF THEM, until the game is closed or reset (fishing, Rock Smash and Sweet Scent still find Pokémon); the WEAKER ONES, with a Repel that lasts 65,535 steps and is saved with your game; or NONE, which brings them all back.',
@@ -410,6 +470,39 @@ IpIABDqDWItQ+9FwR9hCAAMkNgAAAPwDAg==`), {
         },
     },
     {
+        id: 'custom-espeon-umbreon',
+        label: 'Espeon & Umbreon (Evolve Eevee)',
+        description: 'Evolves a friendly Eevee from your party into Espeon or Umbreon, your choice, with the usual evolution scene. FireRed and LeafGreen have no clock, so this is the only way to get them. Eevee needs 220 friendship, as in a normal evolution, and the National Pokédex.',
+        payloads: {
+            ...romPayloads(decodeBase64(`JwTEAD8AAAAMAL/Nyr/JyAAtAM/HvMy/ycj///////////////////////////////++1e0A4+YA
+4t3b3Oi4AOLjANfg49ffAOLZ2djZ2P//////////////uwDa5t3Z4tjg7QC/v9C/vwDZ6uPg6tnn
+AN3i6OP//////////////7/Nyr/JyADj5gDPx7zMv8nIuADt4+nmAOTd19+t///////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFFAEACB+vAAAIRbsFFAEACB+8AAAICrsFFAEACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAAR70eAQAIZm0jFRAAA2ADuFEAAAglnwAnIQSABgC7BBEBAAgmDYBHASENgJwBuwEHAQAIfwAE
+gCMVEAADsQEhDYABALsB2wAACCtACLsA5QAACCENgAIAuwHvAAAIvU4BAAhmIxUQAAOzASchDYB/
+ALsB/QAACGgjFRAAA6cBJyYNgEcBIQ2AhQC7Af0AAAi9aQEACGZtaGwCvX8BAAhmbWhsAr2SAQAI
+Zm1obAKDAQWAvbcBAAhmbWhsAr3hAQAIZm1obAK9OQEACGZtaGwCaGwCvfUBAAhmbWhsAtHc3dfc
+AL+/0L+/AOfc4+ng2ADZ6uPg6tms/7viAL/BwQDX1eK06ADZ6uPg6tmr/9Hc3dfcANrj5uEA59zj
+6eDYAN3oAOjV39ms/87V39kA2+Pj2ADX1ebZAOPaAN3oq//9AgDd5+K06ADV4gC/v9C/v6v/w+gA
+4tnZ2OcA6NzZAMi7zsPJyLvGAMrJxRu+v9L+2t3m5+it//0CtOcA2ubd2eLY59zd5ADd5/79A60A
+w+gA2erj4OrZ5wDV6ACjo6Gt/73j4dkA1tXX3wDV4u0A6N3h2av/ztzd5wDb3droANjj2efitOgA
+6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/ADC1APCx+AQAICEA8CT4FElIgAIl
+3CgA0wAlIAALIQDwGviFKADQASUOSAWAML0SoAIhCCJv4BC1DUgOSQFgAPCT+AhJCYjEMQEiBUsb
+eAdMAPAE+BC9ACIDSxhHIEfARrxwAwLMcAMCkTMECFEVDQhMRgADiaAFCL/Nyr/JyP8Az8e8zL/J
+yP/wtYWwDQAXACtOACMCyAAiBsYBM6tC+dEnThwgwBsAIToALaNsHhtdJUwA8C/4BwAAISRMAPAq
++A4hAJEBlQKWACEDkQIhBJE4AAgiAiMeTADwHPgOIQCRAZUAIQKROAACIQAiAiMZTADwEPgAICkA
+OgACIxZMAPAJ+AAgFUwA8AX4Dkj/IQGABbDwvSBHELWIsAAjnABsRCBgBHgBMP8s+9EDMIAIgAAB
+M4tC8tFoRv/3pv8IsBC9sPsDAsxwAwK5DQoIya4PCHk0EQhpMBEIfQMKCB2fDwgCBAYHCQsNDgNI
+AIhkIUhDAklAGHBHwEa8cAMCgEICAgdIAGgHSUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH2EIA
+AyQ2AAAA/AMC`), {
+                'BPGE 1.10': decodeBase64(`XAEBR+gDASXEBBaNDQoIoa4PCFE0EQhBMBEIUQMKCPWe`),
+            }),
+        },
+    },
+    {
         id: 'custom-move-tutor',
         label: 'Move Relearner, Deleter & Tutor Reset',
         description: 'Teaches a Pokémon from your party a move it could have learned by level up, like the Move Relearner but free, or makes it forget any move, HMs included. It can also let every one-time move tutor teach its move again.',
@@ -497,6 +590,35 @@ RxAhQUMSSAkYSmiLaEtgimAKe0t7C3NKc3BHYP8DAoAjAAOBWwEIxDsCAnA9AgJGPQIC0OckCOQ/
 AgLgOwICZz0CAmg9AgLSOwIC2j0CAog+AgL/3/7///8FAH8sAh/Mv/CnnfvV7/2f2Y/u+////Vc0
 WoFP1o99/mawovnbUQAAwEY=`), {
                 'BPGE 1.10': decodeBase64(`XAEBR+AEAaw=`),
+            }),
+        },
+    },
+    {
+        id: 'custom-exp-share',
+        label: 'Exp. Share for the Whole Party',
+        description: 'Every Pokémon in your party gets experience from each battle, as with the Exp. Share of later games: the ones that battled get all of it instead of a share, and the rest get half. Eggs and fainted Pokémon get none. Trainer battles, traded Pokémon and the Lucky Egg still give their boosts, and the whole party gains EVs. It lasts until the game is closed or reset; talk to the deliveryman again to turn it off.',
+        payloads: {
+            ...romPayloads(decodeBase64(`KwTyAEMAAAAQAL/Syq0AzcK7zL8AwMnMALvGxv/////////////////////////////O3NkA69zj
+4NkA5NXm6O0A2+bj6+f/////////////////////////v+rZ5u0AysnFG8fJyADd4gDt4+nmAOTV
+5ujt/////////////////9vZ6OcAv9LKrQDa5uPhANnV19wA1tXo6ODZrf/////////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFogAACB+vAAAIRbsFogAACB+8AAAICrsFogAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARx9g/wMCAbsBdAAACL2sAAAIZm4UCCENgAAAuwGYAAAIIxUQAANfAb3fAAAIZm1obAK9NgEA
+CGZuFAghDYABALsBmAAACBEAYP8DAr1jAQAIZm1obAK9eAEACGZtaGwCvYwBAAhmbWhsAs3c1eDg
+AO3j6eYA69zj4NkA5NXm6O0A29noAL/Syq3+2ubj4QDZ6tnm7QDW1ejo4Nms/77j4tmrAM7c4+fZ
+AOjc1egA1tXo6ODZANvZ6ADV4OD+6NzZAL/Syq24AOjc2QDm2efoANvZ6ADc1eDarfvD6ADg1efo
+5wDp4ujd4ADt4+kA5tnn2eit/9Pj6eYA69zj4NkA5NXm6O0A29no5wC/0sqt/sXZ2eQA3egA6NzV
+6ADr1e2s/7zV198A6OMA6NzZAOPg2ADr1e2r/73j4dkA1tXX3wDV4u0A6N3h2av/ztzd5wDb3dro
+ANjj2efitOgA6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/AAAwtQpNDKRBIIAA
+BDghWClQ+9EHTAEgIHAGSAFoSxubCgLQYWBpHAFgML3ARgD8AwJg/wMC4CcAA/C1M0wzSIGLyQdV
+0SF4AClS0ABoMEmIQk7RMEgAaAAoStEvSABoQQ4EKUXRAHgjKELRLE0taCxPOH8CKB3QASg60SpI
+AHhYIUhDKUlAGAGIKiKGXBwgSEMmSUAYQHpwQwchBt9ggAAgI0kIgCh0APAo+FMhaFQCIDh3Lnxh
+iADwIPjwQMAHEtRkIHBDHEqAGMJ8UgdSDwIqDtFWIoJaACoK0FMj6lwBIAJD6lRJCAApANEBIVAi
+qVJjaPC8AbyGRhhHCkgAeIAHwA8MShBccEdg/wMCgCMAA4FbAQjEOwICcD0CAuQ/AgLAPwICaT0C
+AuA7AgJQIyUITj8CAko/AgKAQgIC`), {
+                'BPGE 1.10': decodeBase64(`XAEBR0AEASw=`),
             }),
         },
     },
@@ -760,6 +882,37 @@ L2ABIBCw8L0AtRghAPAT+A6hCFwAvRhHwEaRMwQIA0gAiGQhSEMCSUAYcEfARrxwAwKAQgICyQbK
 DohCANNAGpFCAdBJCPjncEfktNiceGzhsdKTcmPJjcaHTks5LTYnHhsHSABoB0lAGAdJmmgSGlIY
 mmD5IpIABDqDWItQ+9FwR9hCAAMkNgAAAPwDAg==`), {
                 'BPGE 1.10': decodeBase64(`XAEBR0gDBiwjJQjo1w==`),
+            }),
+        },
+    },
+    {
+        id: 'custom-poke-ball-changer',
+        label: 'Poké Ball Changer',
+        description: 'Moves a Pokémon from your party into the Poké Ball of your choice: any ball but the Safari Ball. Its summary shows the new ball.',
+        payloads: {
+            ...romPayloads(decodeBase64(`KARkAEAAAAAUAMrJxRsAvLvGxgC9wrvIwb/M//////////////////////////////+7AOLZ6wDc
+4+HZANrj5gDVAMrJxRvHycj/////////////////////x+Pq2QDVAMrJxRvHycgA3eLo4wDo3NkA
+ysnFG////////////////7y7xsYA49oA7ePp5gDX3OPd19mtANDd593o///////////////////o
+3NkA2Nng3erZ5u3h1eIA4+IA6NzZAKPi2P//////////////////2uDj4+YA49oA1QDKycUbx8nI
+AL2/yM6/zK3//////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsF3wAACB+vAAAIRbsF3wAACB+8AAAICrsF3wAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAAR73pAAAIZm0jFRAAAwwDuFEAAAglnwAnIQSABgC7BNwAAAgmDYBHASENgJwBuwHSAAAIfwAE
+gBYGgAAAvT0BAAhmIxUQAAM6ASchDYB/ALsBswAACCMVEAADawEhDYAAALsFfgAACL1cAQAIZm1o
+bAIhBoAAALsByAAACBYGgAAAuX4AAAi9dgEACGZtaGwCvRMBAAhmbWhsAmhsAr2KAQAIZm1obALR
+3N3X3ADKycUbx8nIAOfc4+ng2ADb2egA1f7i2esAysnFGwC8u8bGrP+74gC/wcEA3NXn4rToANbZ
+2eIA19Xp29zoAN3iANX+ysnFGwC8u8bGq//R3N3X3ADKycUbALy7xsYA6+Pp4NgA3egA4N3f2az/
+/QIA4uPrANfV4ODnAN3o5/79AwDc4+HZq/+94+HZANbV198A1eLtAOjd4dmr/87c3ecA293a6ADY
+49nn4rToAOvj5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt/zC1iLAlSICIKqQHJQAo
+AdAHNAQlACPgXADwOfiZAGlECGABM6tC9tEHLQTRJKCZAGlECGABNWhGKQANIgDwRPgIsDC9ELWB
+sBRLmIgUSQmIACgE0QcpA9EBIJiAE+AHMRSgRFwAlADwi/gmIWpGDUsA8BL4IAAA8Ar4AQALSAxL
+APAK+AAgBkkIgAGwEL0sIUhDBUlAGHBHGEfARrxwAwLMcAMCJTsECCSLPQjwHAICrcgACAQDAgEG
+BwgJCgsMAMfJzL+w/8BG8LWFsA0AFwAhTgAjAsgAIgbGATOrQvnRHU4cIMAbACE6ACOjbB4bXRtM
+APAv+AcAACEaTADwKvgOIQCRAZUClgAhA5ECIQSROAAIIgIjFEwA8Bz4DiEAkQGVACECkTgAAiEA
+IgIjD0wA8BD4ACApADoAAiMMTADwCfgAIAtMAPAF+ARI/yEBgAWw8L0gR8BGsPsDAsxwAwK5DQoI
+ya4PCHk0EQhpMBEIfQMKCB2fDwgCBAYHCQsNDgNIAIhkIUhDAklAGHBHwEa8cAMCgEICAgdIAGgH
+SUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH2EIAAyQ2AAAA/AMC`), {
+                'BPGE 1.10': decodeBase64(`XAEBR7gDAmCJcAQWjQ0KCKGuDwhRNBEIQTARCFEDCgj1ng==`),
             }),
         },
     },
@@ -1240,6 +1393,153 @@ IIgaSwDwFfgGAAIhGE8A8BH4MAADIQDwDfgGsPC9CEhwQwhJRhgwDHBHBZAFqgdICEsYRzhHwEbM
 cAMCcYYECG1OxkFzYAAA1QcAAChAAgL9EQQIJTsECA0hBAglHAQIgEICAiVAAgI5QwQIQWoECNnF
 CAjMyb3Fzf///48BJABdAOgAHwHARg==`), {
                 'BPGE 1.10': decodeBase64(`XAEBRwAEAa0=`),
+            }),
+        },
+    },
+    {
+        id: 'custom-channel-jirachi',
+        label: 'Jirachi (Pokémon Channel Event)',
+        description: 'The Jirachi that Pokémon Channel gave in Europe, as it came: OT CHANNEL, ID 40122, level 5, holding a Ganlon or Salac Berry, with Wish, Confusion and Rest, and its trainer’s secret ID, game and gender from the same random numbers, the way PKHeX checks them. It can be shiny. One per card; receive the card again for another.',
+        payloads: {
+            ...romPayloads(decodeBase64(`LQSZAUUAAAAIAL3Cu8jIv8YAxMPMu73Cw//////////////////////////////////O3NkAysnF
+G8fJyAC9wrvIyL/GANvd2uj/////////////////////ztzZAMTDzLu9wsMA6NzV6ADKycUbx8nI
+/////////////////////73Cu8jIv8YA29Xq2QDd4gC/6ebj5Nmt///////////////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFmQAACB+vAAAIRbsFmQAACB+8AAAICrsFmQAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARyvYA7sBhQAACEMjFRAAAwUBIQ2AAgC7AY8AAAgp2AMxAQG9owAACGYybSENgAEAuwF7AAAI
+aGwCvbgAAAhmbWhsAr3PAAAIZm1obAK9+wAACGZtaGwCvRsBAAhmbWhsAv0BAObZ19nd6tnYAMTD
+zLu9wsOr/8PoAOvV5wDn2eLoAOjjAOjc2QDKva3/zNnX2d3q2QDo3NkA19Xm2ADV29Xd4gDa4+b+
+1eLj6NzZ5gDEw8y7vcLDq//T4+nmAOTV5ujtANXi2ADo3NkAyr0A1ebZANrp4OCr/87c3ecA293a
+6ADY49nn4rToAOvj5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt/wAAAPC1hrB9pGxL
+APDS+AYENgxpSwDwzfgABAZDACUA8L74sA8BIYFADUMOLffTAPC2+ADwtPgA8LL4APCw+ADwrvgB
+IYkDiEIG2QDwqPhdSYhCAdkA8KP4APCh+ADwn/gFAADwnPgHBADwmfgHQwEhCCgA0wAhOAxoQFNK
+UECIQgLQASDAB0dALQQA8Ij4wAsFQwDwhPjAC0AABUMA8H/4wAuAAAVDACIAIwDwePjACphAAkMF
+Mx4r99EEkgGXASAAkAEgApAoDAAEP0kIQwOQP0ghiAUiACM+TwDwa/hFogchAPBk+KgIMSEA8F74
+/yAjIQDwWvhoCAEhCEABMCUhAPBT+AEgKECpMAwhAPBN+AAgJCEA8En4BJ4nJx8gMEB2CTkAAPBB
++AE3LS/20QAmcQBhGEmIMgAlSCdPAPA6+AE2BC700SFIJU8A8DP4JU43eB5IBi8D0yRLAPAq+Avg
+ZCF5Qx9KiRhgIoNYi1AEOvvVATc3cAAgD0kIgAIoDNAgiBpLAPAV+AYAAiEZTwDwEfgwAAMhAPAN
++Aaw8L0HSHBDB0lGGDAMcEcFkAWqB0gJSxhHOEfMcAMCcYYECP1DAwDDniYAelQAALqcAAAoQAIC
+/REECCU7BAgNIQQIJRwECIBCAgIlQAICOUMECEFqBAjZxQgIvcK7yMi/xv+ZAREBXQCcAAAAwEY=`), {
+                'BPGE 1.10': decodeBase64(`XAEBR5QEAa0=`),
+            }),
+        },
+    },
+    {
+        id: 'custom-box-eggs',
+        label: 'Pokémon Box Eggs (Special Moves)',
+        description: 'One of the Eggs Pokémon Box Ruby & Sapphire gave: Swablu with False Swipe, Zigzagoon with ExtremeSpeed, Skitty with Pay Day or Pichu with Surf. The deliveryman offers them in turn. It hatches as yours, as those did. One per card; receive the card again for another.',
+        payloads: {
+            ...romPayloads(decodeBase64(`LgScAUYAAAAQAMrJxRvHycgAvMnSAL/Bwc3///////////////////////////////+/wcHNAOvd
+6NwA5+TZ193V4ADh4+rZ5///////////////////////zdG7vMbPuADUw8HUu8HJyci4AM3Fw87O
+0wDj5v///////////////8rDvcLPAOvd6NwA1QDn5NnX3dXgAOHj6tnw///////////////////X
+3OPj59kA4+LZAOPiAKPAAOPaANX/////////////////////////ysnFG8fJyAC9v8jOv8yt////
+/////////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsF3AAACB+vAAAIRbsF3AAACB+8AAAICrsF3AAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARyvYA7sBvgAACBYEgAAAIxUQAAOZAiENgAAAuwHSAAAIfQAGgL1tAQAIZm4UCCENgAEAuwGF
+AAAIFwSAAQC5UQAACEMjFRAAAzQBIQ2AAgC7AcgAAAgp2AMxAQG95gAACGYybSENgAEAuwG0AAAI
+aGwCvfoAAAhmbWhsAr0RAQAIZm1obAK9OQEACGZtaGwCvVkBAAhmbWhsAr2GAQAIZm1obAL9AQDm
+2dfZ3erZ2ADV4gC/wcGr/8PoAOvV5wDn2eLoAOjjAOjc2QDKva3/zNnX2d3q2QDo3NkA19Xm2ADV
+29Xd4gDa4+b+1eLj6NzZ5gC/wcGr/9Pj6eYA5NXm6O0A1eLYAOjc2QDKvQDV5tkA2ung4Kv/vePh
+2QDW1dffANXi7QDo3eHZq//R4+ng2ADt4+kA4N3f2QDVAP0C/r/Bwaz/ztzd5wDb3droANjj2efi
+tOgA6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/8LWGsGSkYUgAiAohSEMkGE9L
+APCL+AYENgxNSwDwhvgABAZDAPB4+AcEAPB1+AdDAZcBIACQACACkElIA5AA8Gv4RwR/DADwZ/hA
+BIAIOEMEkERIIYgFIgAjQ08A8Gf4S6IHIQDwYPgBIDEhAPBa+P8gIyEA8Fb4AiAAICQhAPBR+AEg
+AyEA8E34TaICIQDwS/ggiBwhSEMwSUAYQHwgIQDwQPgBIC0hAPA8+ASeJycfIDBAdgk5AADwNPgB
+Ny0v9tEAJnEAYRhJiDIAJUgoTwDwLfgBNgQu9NEiSCVPAPAm+CZON3gfSAYvA9MkSwDwHfgL4GQh
+eUMfSokYYCKDWItQBDr71QE3N3AAIA9JCIACKP/QBrDwvQ5IcEMOSUYYMAxwRwWQBaoOSBBLGEc4
+RxZIAYgAIgQpBdIKIlFDFqJRWoGAASIBSAKAcEfMcAMCcYYECG1OxkFzYAAAUCMlCAAAAAAoQAIC
+/REECCU7BAgNIQQIJRwECIBCAgIlQAICOUMECEFqBAjZxQgIvHADArvUz827////ZgFAAC0AzgAA
+ACABIQAtACcA9QA7AS0AIQAnAAYArABUAMwAOQAAAGBvi//////////ARg==`), {
+                'BPGE 1.10': decodeBase64(`XAEBR2gEASyUBAGt`),
+            }),
+        },
+    },
+    {
+        id: 'custom-colosseum-pikachu',
+        label: 'Pikachu (Japanese Colosseum Bonus Disc)',
+        description: 'The Pikachu that the Japanese Pokémon Colosseum bonus disc gave: a Japanese Pikachu, OT コロシアム, ID 31121, level 10, never shiny, made the way Colosseum made it. One per card; receive the card again for another.',
+        payloads: {
+            ...romPayloads(decodeBase64(`LwQZAEcAAAAUAL3JxsnNzb/PxwDKw8W7vcLP///////////////////////////////A5uPhAMTV
+5NXitOcAvMnIz80AvsPNvf//////////////////////ztzZAMrDxbu9ws8A49oA6NzZAMTV5NXi
+2efZ/////////////////73JxsnNzb/PxwC8ycjPzQC+w829rf/////////////////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFmQAACB+vAAAIRbsFmQAACB+8AAAICrsFmQAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARyvYA7sBhQAACEMjFRAAAwUBIQ2AAgC7AY8AAAgp2AMxAQG9owAACGYybSENgAEAuwF7AAAI
+aGwCvbgAAAhmbWhsAr3PAAAIZm1obAK9+wAACGZtaGwCvRsBAAhmbWhsAv0BAObZ19nd6tnYAMrD
+xbu9ws+r/8PoAOvV5wDn2eLoAOjjAOjc2QDKva3/zNnX2d3q2QDo3NkA19Xm2ADV29Xd4gDa4+b+
+1eLj6NzZ5gDKw8W7vcLPq//T4+nmAOTV5ujtANXi2ADo3NkAyr0A1ebZANrp4OCr/87c3ecA293a
+6ADY49nn4rToAOvj5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt/wAAAPC1hrBgpFBL
+APCa+AYENgxNSwDwlfgABAZDNQAuAADwhfhHBH8MAPCB+EAEgAgHQwSXAPB7+ADwefgHBADwdvgH
+QzgMeEBDSUhAAATADATRLgAA8Gv4NQDg5wGXASAAkAEgApA7SAOQO0ghiAoiACM6TwDwZvhCogch
+APBf+AAgMSEA8Fn4/yAjIQDwVfgCICUhAPBR+AEgAyEA8E34PaICIQDwS/gEnicnHyAwQHYJOQAA
+8EH4ATctL/bRACZxAGEYSYgyACRIJk8A8Dr4ATYELvTRIEgkTwDwM/gkTjd4HUgGLwPTI0sA8Cr4
+C+BkIXlDHkqJGGAig1iLUAQ6+9UBNzdwACAPSQiAAigM0CCIGUsA8BX4BgACIRhPAPAR+DAAAyEA
+8A34BrDwvQdIcEMHSUYYMAxwRwWQBaoGSAhLGEc4R8xwAwJxhgQI/UMDAMOeJgCReQAAKEACAv0R
+BAglOwQIDSEECCUcBAiAQgICJUACAjlDBAhBagQI2cUICFp7XFFx////GQBUAC0AJwBWAMBGnFZh
+hVP//////8BG`), {
+                'BPGE 1.10': decodeBase64(`XAEBRyAEAa0=`),
+            }),
+        },
+    },
+    {
+        id: 'custom-ageto-celebi',
+        label: 'Celebi (Japanese Colosseum Bonus Disc)',
+        description: 'The Ageto Celebi of the Japanese Pokémon Colosseum bonus disc: a Japanese Celebi, OT アゲト, ID 31121, level 10, never shiny, made the way Colosseum made it. One per card; receive the card again for another.',
+        payloads: {
+            ...romPayloads(decodeBase64(`MAT7AEgAAAAMALvBv87JAL2/xr+8w//////////////////////////////////////A5uPhAMTV
+5NXitOcAvMnIz80AvsPNvf//////////////////////ztzZAL2/xr+8wwDj2gDo3NkAxNXk1eLZ
+59n//////////////////73JxsnNzb/PxwC8ycjPzQC+w829rf/////////////////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFmQAACB+vAAAIRbsFmQAACB+8AAAICrsFmQAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARyvYA7sBhQAACEMjFRAAAwEBIQ2AAgC7AY8AAAgp2AMxAQG9owAACGYybSENgAEAuwF7AAAI
+aGwCvbcAAAhmbWhsAr3OAAAIZm1obAK9+QAACGZtaGwCvRkBAAhmbWhsAv0BAObZ19nd6tnYAL2/
+xr+8w6v/w+gA69XnAOfZ4ugA6OMA6NzZAMq9rf/M2dfZ3erZAOjc2QDX1ebYANXb1d3iANrj5v7V
+4uPo3NnmAL2/xr+8w6v/0+Pp5gDk1ebo7QDV4tgA6NzZAMq9ANXm2QDa6eDgq//O3N3nANvd2ugA
+2OPZ5+K06ADr4+bfAOvd6Nz+6Nzd5wDq2ebn3ePiAOPaAOjc2QDb1eHZrf8A8LWGsGCkUEsA8Jr4
+BgQ2DE1LAPCV+AAEBkM1AC4AAPCF+EcEfwwA8IH4QASACAdDBJcA8Hv4APB5+AcEAPB2+AdDOAx4
+QENJSEAABMAMBNEuAADwa/g1AODnAZcBIACQASACkDtIA5A7SCGICiIAIzpPAPBm+EKiByEA8F/4
+ASAxIQDwWfj/ICMhAPBV+AIgJSEA8FH4ASADIQDwTfg9ogIhAPBL+ASeJycfIDBAdgk5AADwQfgB
+Ny0v9tEAJnEAYRhJiDIAJEgmTwDwOvgBNgQu9NEgSCRPAPAz+CRON3gdSAYvA9MjSwDwKvgL4GQh
+eUMeSokYYCKDWItQBDr71QE3N3AAIA9JCIACKAzQIIgZSwDwFfgGAAIhGE8A8BH4MAADIQDwDfgG
+sPC9B0hwQwdJRhgwDHBHBZAFqgZICEsYRzhHzHADAnGGBAj9QwMAw54mAJF5AAAoQAIC/REECCU7
+BAgNIQQIJRwECIBCAgIlQAICOUMECEFqBAjZxQgIUYpk///////7AF0AaQDXANsAwEZeepeA////
+////wEY=`), {
+                'BPGE 1.10': decodeBase64(`XAEBRxwEAa0=`),
+            }),
+        },
+    },
+    {
+        id: 'custom-mattle-ho-oh',
+        label: 'Ho-Oh (Colosseum Mt. Battle Prize)',
+        description: 'The Ho-Oh Pokémon Colosseum gives for beating all 100 trainers of Mt. Battle: OT MATTLE, ID 10048, level 70, with Recover, Fire Blast, Sunny Day and Swift, never shiny, made the way Colosseum made it. One per card; receive the card again for another.',
+        payloads: {
+            ...romPayloads(decodeBase64(`MQT6AEkAAAAcAMe7zs7GvwDCya7Jwv/////////////////////////////////////O3NkAx86t
+ALy7zs7GvwDk5t3u2f//////////////////////////ztzZAMLJrsnCAL3JxsnNzb/PxwDb1erZ
+ANrj5v///////////////+vd4uLd4tsAoqGhAMfOrQC8u87Oxr8A2t3b3Ojnrf/////////////Q
+3efd6ADo3NkA2Nng3erZ5u3h1eIA4+IAo8D/////////////////49oA1QDKycUbx8nIAL2/yM6/
+zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFmQAACB+vAAAIRbsFmQAACB+8AAAICrsFmQAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARyvYA7sBhQAACEMjFRAAAwEBIQ2AAgC7AY8AAAgp2AMxAQG9owAACGYybSENgAEAuwF7AAAI
+aGwCvbYAAAhmbWhsAr3NAAAIZm1obAK99wAACGZtaGwCvRcBAAhmbWhsAv0BAObZ19nd6tnYAMLJ
+rsnCq//D6ADr1ecA59ni6ADo4wDo3NkAyr2t/8zZ19nd6tkA6NzZANfV5tgA1dvV3eIA2uPm/tXi
+4+jc2eYAwsmuycKr/9Pj6eYA5NXm6O0A1eLYAOjc2QDKvQDV5tkA2ung4Kv/ztzd5wDb3droANjj
+2efitOgA6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/AAAA8LWGsFykTEsA8JL4
+BgQ2DElLAPCN+AAEBkM1AC4AAPB9+EcEfwwA8Hn4QASACAdDBJcA8HP4APBx+AcEAPBu+AdDOAx4
+QD9JSEAABMAMBNEuAADwY/g1AODnAZcBIACQASACkDdIA5A3SCGIRiIAIzZPAPBe+D6iByEA8Ff4
+ACAxIQDwUfj/ICMhAPBN+AEgJSEA8En4BJ4nJx8gMEB2CTkAAPBB+AE3LS/20QAmcQBhGEmIMgAk
+SCZPAPA6+AE2BC700SBIJE8A8DP4JE43eB1IBi8D0yNLAPAq+AvgZCF5Qx5KiRhgIoNYi1AEOvvV
+ATc3cAAgD0kIgAIoDNAgiBlLAPAV+AYAAiEYTwDwEfgwAAMhAPAN+Aaw8L0HSHBDB0lGGDAMcEcF
+kAWqBkgISxhHOEfMcAMCcYYECP1DAwDDniYAQCcAAChAAgL9EQQIJTsECA0hBAglHAQIgEICAiVA
+AgI5QwQIQWoECNnFCAjHu87Oxr////oAaQB+APEAgQDARg==`), {
+                'BPGE 1.10': decodeBase64(`XAEBRwwEAa0=`),
             }),
         },
     },

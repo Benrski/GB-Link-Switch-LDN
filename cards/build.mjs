@@ -61,6 +61,7 @@ const ITEM_COIN_CASE = 260;
 const PARTY_SIZE = 6;
 const SPECIES_EGG = 412;
 const SPECIES_UNOWN = 201;
+const SPECIES_EEVEE = 133;
 const MAX_MON_MOVES = 4;
 const FADE_FROM_BLACK = 0;
 const FADE_TO_BLACK = 1;
@@ -80,7 +81,8 @@ const range = (first, last) => Array.from({ length: last - first + 1 }, (_, i) =
 const FAMILIES = {
   frlg: {
     scriptInSaveBlock1: 0x3624,
-    symbols: { DAYCARE: 0x2f80, GIFT_RIBBONS: 0x309c },
+    // PC_SPECIAL: ShowPokemonStorageSystemPC
+    symbols: { DAYCARE: 0x2f80, GIFT_RIBBONS: 0x309c, PC_SPECIAL: 0x3c },
     specials: {
       choosePartyMon: 0x9f, eggHatch: 0xc2, changePokemonNickname: 0x9e, getPartyMonSpecies: 0x147,
       enableNationalPokedex: 0x16f, chooseMonForMoveRelearner: 0xdb, teachMoveRelearnerMove: 0xe0,
@@ -725,6 +727,44 @@ const CARDS = [
     }),
   },
   {
+    id: 'custom-poke-ball-changer',
+    source: 'ball.s',
+    card: {
+      flagId: 1064, idNumber: 64, iconSpecies: 100, bgType: 5,
+      title: 'POKé BALL CHANGER',
+      subtitle: 'A new home for a POKéMON',
+      body: ['Move a POKéMON into the POKé', 'BALL of your choice. Visit', 'the deliveryman on the 2nd', 'floor of a POKéMON CENTER.'],
+      footer: FOOTER,
+    },
+    data: { more_items: 'MORE…' },
+    // VAR_0x8006 is the page of balls; B on the second goes back to the first.
+    script: (game) => partyMonScript(game, {
+      which: 'Which POKéMON should get a\nnew POKé BALL?',
+      egg: 'An EGG hasn’t been caught in a\nPOKé BALL!',
+      steps: [
+        ...setvar(VAR_0x8006, 0),
+        { define: 'menu' },
+        ...vmessage('ball_text'), ...waitmessage(),
+        ...native('ball_menu'), ...waitstate(),
+        ...compareVarToValue(VAR_RESULT, MENU_B), ...vgotoIf(EQ, 'back'),
+        ...native('set_ball'),
+        ...compareVarToValue(VAR_RESULT, 0), ...vgotoIf(NE, 'menu'),
+        ...say('done_text'),
+        { define: 'back' },
+        ...compareVarToValue(VAR_0x8006, 0), ...vgotoIf(EQ, 'declined'),
+        ...setvar(VAR_0x8006, 0),
+        ...vgoto('menu'),
+        { define: 'declined' },
+        ...say('declined_text'),
+      ],
+      texts: {
+        ball_text: 'Which POKé BALL would it like?',
+        done_text: '{STR_VAR_1} now calls its\n{STR_VAR_2} home!',
+        declined_text: 'Come back any time!',
+      },
+    }),
+  },
+  {
     id: 'custom-pokemon-gender',
     source: 'mongender.s',
     card: {
@@ -1196,6 +1236,53 @@ const CARDS = [
     }),
   },
   {
+    id: 'custom-espeon-umbreon',
+    source: 'espeon.s',
+    card: {
+      flagId: 1063, idNumber: 63, iconSpecies: 196, bgType: 3,
+      title: 'ESPEON & UMBREON',
+      subtitle: 'Day or night, no clock needed',
+      body: ['A friendly EEVEE evolves into', 'ESPEON or UMBREON, your pick.', 'Visit the deliveryman on 2F', 'of a POKéMON CENTER.'],
+      footer: FOOTER,
+    },
+    data: { form_items: 'ESPEON', form_umbreon: 'UMBREON' },
+    // FireRed/LeafGreen stop an evolution past MEW without the National Pokédex.
+    script: (game) => partyMonScript(game, {
+      which: 'Which EEVEE should evolve?',
+      egg: 'An EGG can’t evolve!',
+      steps: [
+        ...native('check'),
+        ...compareVarToValue(VAR_RESULT, 1), ...vgotoIf(EQ, 'not_eevee'),
+        ...(game.family === 'frlg' ? [...checkflag(game.flags.nationalDex), ...vgotoIf(UNSET, 'no_dex')] : []),
+        ...compareVarToValue(VAR_RESULT, 2), ...vgotoIf(EQ, 'not_friendly'),
+        ...vmessage('form_text'), ...waitmessage(),
+        ...native('form_menu'), ...waitstate(),
+        ...compareVarToValue(VAR_RESULT, MENU_B), ...vgotoIf(EQ, 'declined'),
+        ...closemessage(),
+        ...native('evolve'), ...waitstate(),
+        ...specialvar(VAR_RESULT, game.specials.getPartyMonSpecies),
+        ...compareVarToValue(VAR_RESULT, SPECIES_EEVEE), ...vgotoIf(EQ, 'declined'),
+        ...say('done_text'),
+        { define: 'not_eevee' },
+        ...say('not_eevee_text'),
+        ...(game.family === 'frlg' ? [{ define: 'no_dex' }, ...say('no_dex_text')] : []),
+        { define: 'not_friendly' },
+        ...buffernumberstring(1, VAR_0x8005),
+        ...say('not_friendly_text'),
+        { define: 'declined' },
+        ...say('declined_text'),
+      ],
+      texts: {
+        form_text: 'Which form should it take?',
+        done_text: 'Take good care of it!',
+        not_eevee_text: '{STR_VAR_1} isn’t an EEVEE!',
+        ...(game.family === 'frlg' && { no_dex_text: 'It needs the NATIONAL POKéDEX\nfirst.' }),
+        not_friendly_text: '{STR_VAR_1}’s friendship is\n{STR_VAR_2}. It evolves at 220.',
+        declined_text: 'Come back any time!',
+      },
+    }),
+  },
+  {
     id: 'custom-roamer',
     source: 'roamer.s',
     symbols: { STATE: HOOK_STATE },
@@ -1304,6 +1391,76 @@ const CARDS = [
     },
   },
   {
+    id: 'custom-pc-anywhere',
+    source: 'pc.s',
+    symbols: { STATE: HOOK_STATE },
+    card: {
+      flagId: 1066, idNumber: 66, iconSpecies: 137, bgType: 3,
+      title: 'PC ANYWHERE',
+      subtitle: 'Your boxes, one button away',
+      body: ['Press R in the field to use', 'your PC’s POKéMON boxes. Visit', 'the deliveryman on the 2nd', 'floor of a POKéMON CENTER.'],
+      footer: FOOTER,
+    },
+    script: {
+      body: [
+        ...compareAddrToValue(HOOK_STATE, 1), ...vgotoIf(EQ, 'active'),
+        ...vmessage('ask_text'), ...waitmessage(), ...yesnobox(),
+        ...compareVarToValue(VAR_RESULT, 0), ...vgotoIf(EQ, 'declined'),
+        ...native('install'),
+        ...say('on_text'),
+        { define: 'active' },
+        ...vmessage('keep_text'), ...waitmessage(), ...yesnobox(),
+        ...compareVarToValue(VAR_RESULT, 1), ...vgotoIf(EQ, 'declined'),
+        ...native('uninstall'),
+        ...say('off_text'),
+        { define: 'declined' },
+        ...say('declined_text'),
+      ],
+      texts: {
+        ask_text: 'Shall I let you open the PC\nwith R, wherever you are?',
+        on_text: 'Done! Press R in the field to\nuse the PC, until you reset.',
+        keep_text: 'PC Anywhere is on.\nKeep it on?',
+        off_text: 'Back to the PCs in POKéMON\nCENTERS!',
+        declined_text: 'Come back any time!',
+      },
+    },
+  },
+  {
+    id: 'custom-hm-moves',
+    source: 'fieldmoves.s',
+    symbols: { STATE: HOOK_STATE },
+    card: {
+      flagId: 1068, idNumber: 68, iconSpecies: 131, bgType: 0,
+      title: 'HM MOVES, NO HMs',
+      subtitle: 'Your badges are enough',
+      body: ['CUT, SURF, STRENGTH and more,', 'no POKéMON needs to know them.', 'Visit the deliveryman on 2F', 'of a POKéMON CENTER.'],
+      footer: FOOTER,
+    },
+    script: {
+      body: [
+        ...compareAddrToValue(HOOK_STATE, 1), ...vgotoIf(EQ, 'active'),
+        ...vmessage('ask_text'), ...waitmessage(), ...yesnobox(),
+        ...compareVarToValue(VAR_RESULT, 0), ...vgotoIf(EQ, 'declined'),
+        ...native('install'),
+        ...say('on_text'),
+        { define: 'active' },
+        ...vmessage('keep_text'), ...waitmessage(), ...yesnobox(),
+        ...compareVarToValue(VAR_RESULT, 1), ...vgotoIf(EQ, 'declined'),
+        ...writebytetoaddr(0, HOOK_STATE),
+        ...say('off_text'),
+        { define: 'declined' },
+        ...say('declined_text'),
+      ],
+      texts: {
+        ask_text: 'Want to use HM moves without\nteaching them?',
+        on_text: 'Done! Your badges are all you\nneed now, until you reset.',
+        keep_text: 'No HMs needed now.\nKeep it that way?',
+        off_text: 'Back to teaching HMs!',
+        declined_text: 'Come back any time!',
+      },
+    },
+  },
+  {
     id: 'custom-reusable-tms',
     source: 'tm.s',
     symbols: { STATE: HOOK_STATE },
@@ -1368,6 +1525,41 @@ const CARDS = [
         ask_text: 'Want the physical/special\nsplit?',
         on_text: 'Done! It lasts until you reset.',
         keep_text: 'The split is on.\nKeep it on?',
+        off_text: 'Back to the old way!',
+        declined_text: 'Come back any time!',
+      },
+    },
+  },
+  {
+    id: 'custom-exp-share',
+    source: 'expshare.s',
+    symbols: { STATE: HOOK_STATE },
+    card: {
+      flagId: 1067, idNumber: 67, iconSpecies: 242, bgType: 4,
+      title: 'EXP. SHARE FOR ALL',
+      subtitle: 'The whole party grows',
+      body: ['Every POKéMON in your party', 'gets EXP. from each battle.', 'Visit the deliveryman on 2F', 'of a POKéMON CENTER.'],
+      footer: FOOTER,
+    },
+    script: {
+      body: [
+        ...compareAddrToValue(HOOK_STATE, 1), ...vgotoIf(EQ, 'active'),
+        ...vmessage('ask_text'), ...waitmessage(), ...yesnobox(),
+        ...compareVarToValue(VAR_RESULT, 0), ...vgotoIf(EQ, 'declined'),
+        ...native('install'),
+        ...say('on_text'),
+        { define: 'active' },
+        ...vmessage('keep_text'), ...waitmessage(), ...yesnobox(),
+        ...compareVarToValue(VAR_RESULT, 1), ...vgotoIf(EQ, 'declined'),
+        ...writebytetoaddr(0, HOOK_STATE),
+        ...say('off_text'),
+        { define: 'declined' },
+        ...say('declined_text'),
+      ],
+      texts: {
+        ask_text: 'Shall your whole party get EXP.\nfrom every battle?',
+        on_text: 'Done! Those that battle get all\nthe EXP., the rest get half.¶It lasts until you reset.',
+        keep_text: 'Your whole party gets EXP.\nKeep it that way?',
         off_text: 'Back to the old way!',
         declined_text: 'Come back any time!',
       },
@@ -1439,6 +1631,53 @@ const CARDS = [
     script: (game) => (name ? eventMonScript(game, name) : eventMonScript(game, null, {
       choose: offerMon,
       texts: { offer_text: 'Would you like {STR_VAR_1}?' },
+    })),
+  })),
+  // More event Pokémon, EVENT 11 on.
+  ...[
+    {
+      id: 'channel-jirachi', icon: 409, bgType: 2, name: 'JIRACHI',
+      title: 'CHANNEL JIRACHI', subtitle: 'The POKéMON CHANNEL gift',
+      body: ['The JIRACHI that POKéMON', 'CHANNEL gave in Europe.', ...VISIT],
+    },
+    {
+      id: 'box-eggs', icon: 412, bgType: 4, eggs: true,
+      title: 'POKéMON BOX EGGS', subtitle: 'EGGS with special moves',
+      body: ['SWABLU, ZIGZAGOON, SKITTY or', 'PICHU with a special move:', 'choose one on 2F of a', 'POKéMON CENTER.'],
+    },
+    {
+      id: 'colosseum-pikachu', icon: 25, bgType: 5, name: 'PIKACHU',
+      title: 'COLOSSEUM PIKACHU', subtitle: 'From Japan’s BONUS DISC',
+      body: ['The PIKACHU of the Japanese', 'COLOSSEUM BONUS DISC.', ...VISIT],
+    },
+    {
+      id: 'ageto-celebi', icon: 251, bgType: 3, name: 'CELEBI',
+      title: 'AGETO CELEBI', subtitle: 'From Japan’s BONUS DISC',
+      body: ['The CELEBI of the Japanese', 'COLOSSEUM BONUS DISC.', ...VISIT],
+    },
+    {
+      id: 'mattle-ho-oh', icon: 250, bgType: 7, name: 'HO-OH',
+      title: 'MATTLE HO-OH', subtitle: 'The MT. BATTLE prize',
+      body: ['The HO-OH COLOSSEUM gave for', 'winning 100 MT. BATTLE fights.', ...VISIT],
+    },
+  ].map(({ id, icon, bgType, name, eggs, title, subtitle, body }, i) => ({
+    id: `custom-${id}`,
+    source: 'eventmon.s',
+    symbols: { EVENT: 11 + i },
+    card: {
+      flagId: 1069 + i, idNumber: 69 + i, iconSpecies: icon, bgType,
+      title,
+      subtitle,
+      body,
+      footer: FOOTER,
+    },
+    script: (game) => (name ? eventMonScript(game, name) : eventMonScript(game, null, {
+      choose: offerMon,
+      texts: eggs ? {
+        offer_text: 'Would you like a {STR_VAR_1}\nEGG?',
+        received_text: '{PLAYER} received an EGG!',
+        already_text: 'Receive the card again for\nanother EGG!',
+      } : { offer_text: 'Would you like {STR_VAR_1}?' },
     })),
   })),
   {
