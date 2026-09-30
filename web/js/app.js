@@ -1104,16 +1104,25 @@ function celioServer() {
     return /^wss?:\/\/\S+$/.test(address) ? address : null;
 }
 
+// Why the board cannot play over Celio yet, or null. Sessions are only created or joined
+// once it can, so the Celio server never hears from a page that is not ready.
+function celioBoardBlocker() {
+    const esp = state.esp;
+    if (!esp) return 'Connect the ESP32 board in step 1.';
+    if (!esp.attached) return 'The ESP32 board is restarting…';
+    const bundled = state.manifest?.bridge.version;
+    if (!esp.info || (bundled && newer(bundled, esp.info.version))) return `Update the board’s firmware${bundled ? ` to ${bundled}` : ''} in step 1 first.`;
+    if (!state.keys?.complete) return 'The board needs its keys from step 1.';
+    if (esp.info.transport === 'UART' && esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
+    return null;
+}
+
 // Why the link cannot start, or null.
 function celioBlocker() {
     if (state.bridge) return 'This page is carrying the link for a Game Boy Advance. Stop that first.';
     if (state.trade) return 'This page is trading with the Switch itself. Disconnect there first.';
     if (state.gift) return 'This page is sending Mystery Gifts. Stop that first.';
-    if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
-    if (!state.esp.info) return 'Install the firmware in step 1 first.';
-    if (!state.keys?.complete) return 'The board needs its keys from step 1.';
-    if (state.esp.info?.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
-    return null;
+    return celioBoardBlocker();
 }
 
 function celioNote(text, tone = '') {
@@ -1122,7 +1131,7 @@ function celioNote(text, tone = '') {
 }
 
 async function celioEnter(join) {
-    if (state.celio) return;
+    if (state.celio || celioBoardBlocker()) return;
     const server = celioServer();
     if (!server) { celioNote('The Celio server’s address has to start with wss:// or ws://.', 'bad'); return; }
     const code = $('celio-code').value.trim();
@@ -1224,10 +1233,11 @@ function renderCelio() {
     const session = state.celio;
     const inSession = Boolean(session?.sessionId);
     const running = Boolean(session?.running);
+    const board = celioBoardBlocker();
     $('celio-start').hidden = inSession;
     $('celio-in').hidden = !inSession;
-    $('celio-create').disabled = Boolean(session);
-    $('celio-join').disabled = Boolean(session) || !$('celio-code').value.trim();
+    $('celio-create').disabled = Boolean(session || board);
+    $('celio-join').disabled = Boolean(session || board) || !$('celio-code').value.trim();
     $('celio-code').disabled = Boolean(session);
     if (inSession) {
         $('celio-id').textContent = session.sessionId;
@@ -1238,7 +1248,8 @@ function renderCelio() {
     $('celio-link').hidden = running;
     $('celio-rooms').hidden = !(running && session.needsRoom);
     $('celio-link').disabled = !session?.partner || Boolean(blocker);
-    const note = state.celioNote ?? (inSession && !running && session.partner && blocker ? { text: blocker, tone: '' } : null);
+    const waiting = session ? inSession && !running && session.partner && blocker : board;
+    const note = state.celioNote ?? (waiting ? { text: waiting, tone: '' } : null);
     setLine('celio-note', note?.text ?? '', note?.tone ?? '');
     $('celio-session').hidden = !running;
     let tone = inSession ? 'busy' : '';

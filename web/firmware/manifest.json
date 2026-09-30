@@ -73,7 +73,7 @@
     }
   },
   "adapter": {
-    "version": "2.2.6",
-    "path": "adapter/gblink-wireless-2.2.6.uf2"
+    "version": "2.2.7",
+    "path": "adapter/gblink-wireless-2.2.7.uf2"
   }
 }
