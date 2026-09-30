@@ -42,7 +42,7 @@ code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-si
 a { color: var(--accent); }
 
 /* The page's two trees: what is linked with the Switch decides which cards follow. */
-.paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; margin-top: 22px; }
+.paths { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px; margin-top: 22px; }
 .path {
     display: grid; gap: 3px; align-content: start; text-align: left;
     padding: 14px 16px; border-radius: 14px;
@@ -300,3 +300,8 @@ footer p { color: var(--muted); font-size: 0.82rem; }
 #celio-activity { margin-left: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
 #celio-activity:disabled { opacity: 0.55; }
 .celio-id { margin: 16px 0 0; overflow-wrap: anywhere; }
+
+.gift-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 16px 0 0; }
+.gift-pick label { color: var(--muted); font-size: 0.9rem; }
+#gift-event { flex: 1 1 18em; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
+#gift-description { margin-top: 8px; }

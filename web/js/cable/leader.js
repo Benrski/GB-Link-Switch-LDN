@@ -80,6 +80,7 @@ export class RfuLeader {
         this.ticks = 0;
         this.childFrames = [];
         this.childName = [];
+        this.nameDone = false;
         this.niAck = null;            // parent ack of the child's NI, sent until it moves on
         this.recvN = [0, 0, 0, 0];
         this.joinStep = 0;
@@ -104,8 +105,9 @@ export class RfuLeader {
     standby(count) { const words = [0x6600, count, 0, 0, 0, 0, 0]; this.command(words); this.command(words.slice()); }
     closeLink(count) { this.command([0x5f00, count, 0, 0, 0, 0, 0]); }
 
-    // The leader's block: its INIT on four frames, then one fragment a frame, never resent.
-    sendBlock(data) {
+    // The leader's block: its INIT on four frames, then each fragment on `repeat` frames in
+    // a row, never resent.
+    sendBlock(data, repeat = 1) {
         const count = Math.max(1, Math.ceil(data.length / FRAG_BYTES));
         for (let i = 0; i < 4; i++) this.command([0x8800, count, 0x80, 0, 0, 0, 0]);
         for (let i = 0; i < count; i++) {
@@ -114,7 +116,7 @@ export class RfuLeader {
                 const at = i * FRAG_BYTES + k * 2;
                 words.push((data[at] ?? 0) | ((data[at + 1] ?? 0) << 8));
             }
-            this.command(words);
+            for (let r = 0; r < repeat; r++) this.command(words.slice());
         }
         return count;
     }
@@ -176,10 +178,14 @@ export class RfuLeader {
             this.childDevid = 1 + Math.floor(Math.random() * 0xfffe);
             this.state = 'naming';
             this.childName = [];
+            this.childFrames = [];
+            this.nameDone = false;
             this.recvN = [0, 0, 0, 0];
             this.niAck = null;
             this.joinStep = 0;
+            this.idleNull = 0;
             this.childSeq = 0xff;
+            this.recv = null;
             this.own = [];
             this.echo = null;
             this.send(rfu1(RFU1.CONNECT_ACK, this.childDevid));

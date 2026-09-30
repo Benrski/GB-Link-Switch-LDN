@@ -1,13 +1,13 @@
 # Web client
 
 The page at <https://switch.gblink.io>. It installs the firmware on both boards, stores
-the Switch keys on the ESP32, and then either carries the link between the boards or
-trades with the Switch by itself. It is a plain static site with no build step and no
-server.
+the Switch keys on the ESP32, and then either carries the link between the boards, trades
+with the Switch by itself, or sends it Mystery Gifts. It is a plain static site with no
+build step and no server.
 
-## Two modes
+## Modes
 
-Pick one at the top of the page, or open `#gba` or `#switch` directly.
+Pick one at the top of the page, or open `#gba`, `#switch`, `#celio` or `#gift` directly.
 
 **GBA to Switch** (ESP32 board + GB-Link adapter)
 
@@ -27,6 +27,17 @@ Pick one at the top of the page, or open `#gba` or `#switch` directly.
 
 The page never offers a Pokémon on its own. The Switch never tells the other side what
 its player picked, so the page waits for you to choose or press *Accept trade*.
+
+**Mystery Gift** (ESP32 board only)
+
+1. **ESP32 board:** the same as above, with firmware 2.1.0 or later.
+2. **Mystery Gift:** pick a Wonder Card and press *Start*. The page leads a group as a
+   FireRed sharing a card; on the Switch, MYSTERY GIFT, WONDER CARDS, FRIEND, then GBLINK.
+   The card for the next Switch can change while the group is open.
+
+A Switch that already has the card is sent it again only if you say so on the page. The
+group stays open for one Switch after another; after a link the page had to end itself,
+the board restarts and the group opens again.
 
 Keep the tab visible while playing. Browsers slow down hidden tabs, and the game drops a
 partner that stops answering.
@@ -80,6 +91,7 @@ firmware/tools/package_web.py
 | `js/keys.js` | reading `prod.keys` |
 | `js/trade/` | trading without a GBA |
 | `js/cable/` | Ruby and Sapphire: the adapter's cable mode and the translation to the Switch's wireless (`translator.js` is MPL-2.0, ported from [mgba_LDN](https://github.com/Gr3nSkyDragon/mgba_LDN)) |
+| `js/gift/` | Mystery Gift: the group the Switch joins as a friend, the gift exchange (from [gblink-wondercards](https://github.com/GB-Link/gblink-wondercards)) and the cards; `team.js` is written by `cards/build.mjs` |
 
 ## Tests
 
@@ -90,6 +102,7 @@ node web/tests/run.mjs            # framing and the board connection
 node web/tests/trade.mjs          # trade code against the C# host
 node web/tests/session-test.mjs   # whole trades against a stand-in Switch
 node web/tests/cable-test.mjs     # Ruby's cable link translated, against stand-ins for both games
+node web/tests/gift-test.mjs      # the cards, and whole deliveries to a stand-in Switch's Mystery Gift
 ```
 
 ## Third-party code

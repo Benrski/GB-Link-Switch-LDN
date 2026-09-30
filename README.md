@@ -14,6 +14,10 @@ Game Boy Advance or from your PC.
 - **PC to Switch.** Only have a Switch? All you need is an ESP32 board, no GBA and no
   GB-Link. Trade with the Switch from the web page, from an online Wonder Trade pool or
   from your own `.pk3` files.
+- **Mystery Gift.** Send Wonder Cards to the Switch from the web page: Nintendo's FireRed
+  and LeafGreen event distributions, the Project Wonder events, and the GB-Link Team's
+  cards (speed up or slow down, event Pokémon, the Physical/Special split, the Pocket
+  Casino and more). You need only the ESP32 board.
 
 Everything is set up and played from **<https://switch.gblink.io>**.
 
@@ -40,8 +44,8 @@ computer.
 
 ## What you need
 
-**GBA to Switch** needs an ESP32 board and a GB-Link adapter. **PC to Switch** needs
-only the ESP32 board.
+**GBA to Switch** needs an ESP32 board and a GB-Link adapter. **PC to Switch** and
+**Mystery Gift** need only the ESP32 board.
 
 - An ESP32 board. The original ESP32 and the ESP32-S3 are the recommended ones.
 
@@ -117,6 +121,25 @@ Keep the tab in view while you trade; a hidden tab runs too slowly for the game.
 The desktop app in [`host/`](host/README.md) trades from a party of your own on Windows
 and Linux.
 
+### Mystery Gift
+
+Pick it at the top of the page, or open <https://switch.gblink.io/#gift>. Choose a Wonder
+Card and press *Start*. On the Switch, pick MYSTERY GIFT on the game's main menu, then
+WONDER CARDS, then FRIEND, and choose GBLINK from the list. Once the card is saved, talk
+to the deliveryman upstairs in any Pokémon Center. The page stays ready for the next card,
+on the same Switch or another one.
+
+MYSTERY GIFT shows on the main menu once the game has it unlocked: answer a Poké Mart
+questionnaire with LINK TOGETHER WITH ALL, then save.
+
+On a Game Boy Advance these cards come in over WIRELESS COMMUNICATION, from a distribution
+kiosk. The Switch's game only lists a kiosk there, and a group reaching it over the Switch's
+wireless is always reported as another game, never as a kiosk, so the page shares its cards
+the way a friend does. The card and what it does are the same.
+
+The GB-Link Team's cards are built for the Switch's English FireRed and LeafGreen; see
+[`cards/`](cards/README.md).
+
 ## Repository layout
 
 | Directory | Contents |
@@ -124,6 +147,7 @@ and Linux.
 | [`web`](web/README.md) | The web page |
 | [`firmware`](firmware/README.md) | The ESP32 firmware |
 | [`host`](host/README.md) | The desktop app, in C# |
+| [`cards`](cards/README.md) | The GB-Link Team's Wonder Cards, built for the Switch's games |
 
 ## Building
 
@@ -136,11 +160,16 @@ from [GBLink-Firmware](https://github.com/GB-Link/GBLink-Firmware).
 The ESP32's LDN code started from [easyworld/frlg-ldn-trade-esp32](https://github.com/easyworld/frlg-ldn-trade-esp32),
 a port of [tornadus/frlg-ldn-trade](https://github.com/tornadus/frlg-ldn-trade). Photos by
 AngeloftheNight091. Pokémon pictures on the page come from [PokeAPI](https://github.com/PokeAPI/sprites).
+The Mystery Gift cards and their link code come from
+[gblink-wondercards](https://github.com/GB-Link/gblink-wondercards); the Pocket Casino card
+is by RAF. The Switch's side of Mystery Gift, the FRIEND path and its timing follow
+Decryptu's [pokeldn](https://github.com/Decryptu/pokeldn).
 
 ## Licence
 
 AGPL-3.0, see `LICENSE`. The LDN protocol components are GPL-3.0
-(`licenses/LDN-GPL-3.0.txt`). The web client bundles
+(`licenses/LDN-GPL-3.0.txt`), and so are `cards/` and the Mystery Gift code in `web/js/gift/`,
+which come from gblink-wondercards. The web client bundles
 [esptool-js](https://github.com/espressif/esptool-js) (Apache-2.0) and
 [picoflash](https://github.com/picoflash/picoflash) (MIT). `local`, `prod.keys`,
 `title.keys` and build outputs are ignored by git. Not affiliated with Nintendo or The

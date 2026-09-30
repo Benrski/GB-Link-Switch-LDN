@@ -1,6 +1,7 @@
-// Page controller. ESP32 board card first, then one of two trees: GBA + Switch (adapter and
-// play cards) or Switch only (trade card). Board and adapter cards render from one view
-// object each: status line, optional hint, at most one primary action.
+// Page controller. ESP32 board card first, then the cards of the path picked at the top
+// (PATHS): GBA + Switch (adapter and play cards), Switch only (trade card), Celio or Mystery
+// Gift. Board and adapter cards render from one view object each: status line, optional
+// hint, at most one primary action.
 
 import { EspDevice, ESP_FILTERS, FAST_BAUD, newer, reopenPort, sleep } from './esp.js';
 import { GbLinkSerial, GbLinkUsb, BOOTROM_VENDOR_ID, GBLINK_VENDOR_ID } from './gblink.js';
@@ -33,7 +34,7 @@ const POLL_MS = 5000;
 
 const state = {
     manifest: null,
-    path: 'gba',            // shown tree: gba | switch
+    path: 'gba',            // shown path: gba | switch | celio | gift
 
     esp: null,
     espPort: null,          // picked port that failed to attach
@@ -86,6 +87,13 @@ const state = {
     celio: null,            // CelioSession: in a Celio session, linking once started
     celioNote: null,        // { text, tone }
     celioServer: CELIO_SERVER,
+    gift: null,             // GiftDistribution while the page's Mystery Gift group is open
+    giftEvent: null,        // id of the chosen event
+    giftStatus: null,       // the link now: { stage, event, player, detail, result }
+    giftDecision: null,     // the question the Switch waits on, or null
+    giftResult: null,       // the last delivery, shown until the next Switch joins
+    giftNote: null,         // { text, tone }
+    giftClosing: false,     // Stop pressed: waiting for the board to close its room and restart
     bridgeTimer: null,
     bridgeNote: null,
     wiringNote: null,
@@ -333,7 +341,7 @@ async function refreshEsp() {
     $('esp-transport').textContent = info ? (info.transport === 'UART' ? `UART, ${esp.baudRate} baud` : info.transport) : '–';
     try {
         // Left over from a page closed while bridging.
-        if (!state.bridge && (await esp.adapterPort()) === 'host') await esp.setAdapterPort('uart');
+        if (!state.bridge && !state.gift && (await esp.adapterPort()) === 'host') await esp.setAdapterPort('uart');
         await refreshKeys();
     } catch (error) {
         log('page', describe(error));
@@ -347,6 +355,7 @@ async function dropEsp(problem = null) {
     const device = state.esp;
     if (state.bridge) await stopBridge('The ESP32 board went away.');
     if (state.celio?.running) await celioLeave({ text: 'The ESP32 board went away, so the Celio session ended.', tone: 'bad' });
+    if (state.gift) await giftStop({ text: 'The ESP32 board went away, so the Mystery Gift stopped.', tone: 'bad' });
     clearInterval(state.pollTimer);
     state.esp = null;
     state.keys = null;
@@ -538,6 +547,7 @@ async function pollSession() {
     }
     renderSession();
     renderCelio();
+    renderGift();
 }
 
 // The board joins as soon as it reads a room and stops reporting advertisements once in,
@@ -945,6 +955,7 @@ async function onAdapterFile(file) {
 function bridgeBlocker() {
     if (state.trade) return 'This page is trading with the Switch itself. Disconnect there first.';
     if (state.celio?.running) return 'This page is linking with Celio. Leave that session first.';
+    if (state.gift) return 'This page is sending Mystery Gifts. Stop that first.';
     if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
     if (!state.adapter) return 'Connect the adapter in step 2.';
     if (state.esp.info?.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
@@ -1035,8 +1046,8 @@ async function onWiringCheck() {
 // ---------------------------------------------------------------- the page's two trees
 
 // gba: GBA linked with the Switch (adapter and play cards). switch: Switch alone (trade
-// card). Board setup is the same for both.
-const PATHS = ['gba', 'switch', 'celio'];
+// card). celio: online. gift: Mystery Gift. Board setup is the same for all.
+const PATHS = ['gba', 'switch', 'celio', 'gift'];
 const PATH_STORE = 'gblink-switch-path';
 
 function remembered(key) {
@@ -1051,7 +1062,7 @@ function remember(key, value) {
 }
 
 function pathBusy() {
-    return Boolean(state.bridge || state.trade || state.celio?.running);
+    return Boolean(state.bridge || state.trade || state.celio?.running || state.gift);
 }
 
 function choosePath(path, { keep = true } = {}) {
@@ -1097,6 +1108,7 @@ function celioServer() {
 function celioBlocker() {
     if (state.bridge) return 'This page is carrying the link for a Game Boy Advance. Stop that first.';
     if (state.trade) return 'This page is trading with the Switch itself. Disconnect there first.';
+    if (state.gift) return 'This page is sending Mystery Gifts. Stop that first.';
     if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
     if (!state.esp.info) return 'Install the firmware in step 1 first.';
     if (!state.keys?.complete) return 'The board needs its keys from step 1.';
@@ -1245,6 +1257,193 @@ function renderCelio() {
     $('celio-server-reset').hidden = state.celioServer === CELIO_SERVER;
 }
 
+// ---------------------------------------------------------------- Mystery Gift
+
+const GIFT_STORE = 'gblink-switch-gift';
+// The board leads groups from firmware 2.1.0 on.
+const GIFT_FIRMWARE = '2.1.0';
+let gift = null;            // the gift modules (events, distribution), loaded with the tab
+let giftLoading = null;
+
+function loadGift() {
+    giftLoading ??= Promise.all([import('./gift/events.js'), import('./gift/distribution.js'), import('./gift/mystery-gift.js')]).then(
+        ([events, distribution, link]) => {
+            gift = { ...events, ...distribution, describeGameCode: link.describeGameCode };
+            const select = $('gift-event');
+            select.replaceChildren(...gift.EVENT_GROUPS.map((group) => {
+                const list = document.createElement('optgroup');
+                list.label = group.label;
+                for (const event of group.events) list.append(new Option(event.label, event.id));
+                return list;
+            }));
+            if (!gift.findEvent(state.giftEvent)) state.giftEvent = gift.EVENTS[0].id;
+            select.value = state.giftEvent;
+            renderGift();
+        },
+        (error) => {
+            state.giftNote = { text: `The Wonder Cards could not be loaded: ${describe(error)}`, tone: 'bad' };
+            renderGift();
+        },
+    );
+}
+
+function chooseGiftEvent(id) {
+    const event = gift?.findEvent(id);
+    if (!event) return;
+    state.giftEvent = id;
+    remember(GIFT_STORE, id);
+    state.gift?.setEvent(event);
+    renderGift();
+}
+
+// Why the group cannot open, or null.
+function giftBlocker() {
+    if (state.bridge) return 'This page is carrying the link for a Game Boy Advance. Stop that first.';
+    if (state.trade) return 'This page is trading with the Switch itself. Disconnect there first.';
+    if (state.celio?.running) return 'This page is linking with Celio. Leave that session first.';
+    if (!state.esp?.attached) return 'Connect the ESP32 board in step 1.';
+    if (!state.esp.info) return 'Install the firmware in step 1 first.';
+    if (newer(GIFT_FIRMWARE, state.esp.info.version)) return `Mystery Gift needs the board’s firmware ${GIFT_FIRMWARE} or newer. Install it again in step 1.`;
+    if (!state.keys?.complete) return 'The board needs its keys from step 1.';
+    if (state.esp.info.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
+    return null;
+}
+
+async function giftStart() {
+    const event = gift?.findEvent(state.giftEvent);
+    if (state.gift || !event || giftBlocker()) return;
+    const distribution = new gift.GiftDistribution(state.esp);
+    distribution.addEventListener('log', (e) => log('gift', e.detail));
+    distribution.addEventListener('status', (e) => {
+        if (state.gift !== distribution || state.giftClosing) return;
+        const status = e.detail;
+        if (status.stage === 'joining') state.giftResult = null;
+        if (status.stage === 'checked') log('gift', `the Switch runs ${gift.describeGameCode(status.detail.gameCode)}, revision ${status.detail.revision}`);
+        state.giftStatus = status;
+        renderGift();
+        if (status.stage === 'open' || status.stage === 'restarting') pollSoon();
+    });
+    distribution.addEventListener('decision', (e) => {
+        if (state.gift !== distribution || state.giftClosing) return;
+        state.giftDecision = e.detail;
+        renderGift();
+    });
+    distribution.addEventListener('result', (e) => {
+        if (state.gift !== distribution || state.giftClosing) return;
+        state.giftResult = e.detail;
+        state.giftDecision = null;
+        const view = giftResultView(e.detail);
+        if (view) log('gift', view.headline);
+        renderGift();
+    });
+    distribution.addEventListener('failed', (e) => { if (state.gift === distribution) giftStop({ text: `Stopped: ${describe(e.detail)}`, tone: 'bad' }); });
+    state.gift = distribution;
+    state.giftNote = null;
+    state.giftStatus = null;
+    state.giftResult = null;
+    render();
+    try {
+        await distribution.start(event);
+        log('page', 'the Mystery Gift group is open');
+    } catch (error) {
+        if (state.gift === distribution) state.gift = null;
+        state.giftNote = { text: describe(error), tone: 'bad' };
+    }
+    render();
+    pollSoon();
+}
+
+// The group stays in state.gift until the board is back, so nothing else takes the board
+// while it closes the room.
+async function giftStop(note = null) {
+    const distribution = state.gift;
+    if (!distribution || state.giftClosing) return;
+    state.giftClosing = true;
+    state.giftDecision = null;
+    render();
+    await distribution.stop();
+    state.gift = null;
+    state.giftClosing = false;
+    state.giftStatus = null;
+    state.giftNote = note;
+    log('page', 'the Mystery Gift group is closed');
+    render();
+}
+
+function giftDecide(send) {
+    if (!state.giftDecision) return;
+    state.giftDecision = null;
+    log('gift', send ? 'sending it again' : 'leaving the Switch its card');
+    state.gift?.decide(send);
+    renderGift();
+}
+
+// What a delivery came to, or null when there is nothing to say.
+function giftResultView(result) {
+    const name = result.event?.label ?? 'The card';
+    const who = result.player?.name || 'the Switch';
+    switch (result.outcome) {
+        case 'sent': return { headline: `${name}: delivered to ${who}.`, hint: 'Let the Switch finish saving, then talk to the deliveryman in green upstairs in a Pokémon Center.', tone: 'good' };
+        case 'had-card': return { headline: `Not sent: ${who} already had this Wonder Card.`, hint: '', tone: 'warn' };
+        case 'kept-card': return { headline: `Not sent: ${who} kept the Wonder Card it had.`, hint: '', tone: 'warn' };
+        case 'cant-accept': return { headline: 'The Switch could not take a Wonder Card.', hint: '', tone: 'warn' };
+        case 'unsupported': return { headline: `Not sent: ${name} does not run on ${gift.describeGameCode(result.game.gameCode)}.`, hint: 'The GB-Link Team’s cards run on the Switch’s English FireRed and LeafGreen.', tone: 'warn' };
+        case 'lost': return { headline: 'The link to the Switch dropped before the card was delivered.', hint: '', tone: 'warn' };
+        case 'error': return { headline: result.message ?? 'The Mystery Gift exchange failed.', hint: '', tone: 'warn' };
+        default: return null;
+    }
+}
+
+const GIFT_WHERE = 'On the Switch: MYSTERY GIFT, WONDER CARDS, FRIEND, then choose GBLINK.';
+
+function giftView() {
+    if (state.giftClosing) return { headline: 'Closing the group…', hint: 'The board restarts before the group can open again.', tone: '' };
+    const status = state.giftStatus;
+    const name = status?.player?.name;
+    if (state.giftDecision) return { headline: `${name || 'The Switch'} already has this Wonder Card.`, hint: 'Send it again to replace it, or leave the one it has. The Switch waits on “Communicating…” until you choose.', tone: 'warn' };
+    switch (status?.stage) {
+        case 'restarting': return { headline: 'The board is restarting…', hint: 'The group opens again once it is back, in about half a minute.', tone: '' };
+        case 'joining': return { headline: 'The Switch is joining…', hint: 'Keep this tab open.', tone: 'good' };
+        case 'linked':
+        case 'checking':
+        case 'checked':
+        case 'deciding': return { headline: `Linked with ${name || 'the Switch'}.`, hint: 'Checking its Wonder Card…', tone: 'good' };
+        case 'asking': return { headline: `${name || 'The Switch'} has another Wonder Card.`, hint: 'On the Switch, choose whether to throw it away for this one.', tone: 'good' };
+        case 'sending': return { headline: `Sending ${status.event?.label ?? 'the card'}…`, hint: 'Keep this tab open until the Switch says the card was received.', tone: 'good' };
+        case 'closing': return { headline: 'Finishing the link…', hint: '', tone: 'good' };
+    }
+    const hosting = state.session?.state === 'host';
+    const result = state.giftResult ? giftResultView(state.giftResult) : null;
+    if (result) return { ...result, hint: [result.hint, hosting ? `For another card, pick it above. ${GIFT_WHERE}` : ''].filter(Boolean).join(' ') };
+    if (!hosting) return { headline: 'Opening the group…', hint: '', tone: '' };
+    return { headline: GIFT_WHERE, hint: 'The page sends the card chosen above to the next Switch that joins.', tone: 'good' };
+}
+
+function renderGift() {
+    if (state.path === 'gift') loadGift();
+    const running = Boolean(state.gift);
+    const event = gift?.findEvent(state.giftEvent);
+    $('gift-description').textContent = event?.description ?? '';
+    const blocker = giftBlocker();
+    $('gift-start').hidden = running;
+    $('gift-start').disabled = Boolean(blocker) || !event;
+    $('gift-stop').hidden = !running;
+    $('gift-stop').disabled = state.giftClosing;
+    const note = state.giftNote ?? (!running && blocker ? { text: blocker, tone: '' } : null);
+    setLine('gift-note', note?.text ?? '', note?.tone ?? '');
+    $('gift-session').hidden = !running;
+    $('gift-decision').hidden = !(running && state.giftDecision);
+    let tone = '';
+    if (running) {
+        const view = giftView();
+        $('gift-headline').textContent = view.headline;
+        $('gift-hint').textContent = view.hint;
+        $('gift-session').className = `session ${view.tone}`.trim();
+        tone = view.tone === 'good' ? 'good' : view.tone === 'warn' ? 'warn' : 'busy';
+    }
+    $('gift-dot').className = `dot ${tone}`.trim();
+}
+
 function renderGame() {
     const cable = state.game === 'cable';
     for (const button of $('play-game').children) {
@@ -1266,7 +1465,7 @@ function renderPaths() {
         const chosen = tab.dataset.path === state.path;
         tab.setAttribute('aria-selected', String(chosen));
         tab.disabled = !chosen && pathBusy();
-        tab.title = tab.disabled ? (state.trade ? 'Disconnect from the Switch first.' : 'Stop carrying the link first.') : '';
+        tab.title = tab.disabled ? (state.trade ? 'Disconnect from the Switch first.' : state.gift ? 'Stop the Mystery Gift first.' : 'Stop carrying the link first.') : '';
     }
     for (const card of document.querySelectorAll('main > [data-path]')) card.hidden = card.dataset.path !== state.path;
 }
@@ -1287,6 +1486,7 @@ function tradeBlocker() {
     if (!state.keys?.complete) return 'The board needs its keys before it can read the Switch\'s wireless.';
     if (state.bridge) return 'This page is carrying the link for a Game Boy Advance. Stop that first.';
     if (state.celio?.running) return 'This page is linking with Celio. Leave that session first.';
+    if (state.gift) return 'This page is sending Mystery Gifts. Stop that first.';
     if (pooling()) return poolServer() ? null : 'The trade pool server\'s address has to start with wss:// or ws://.';
     if (!state.party.canTrade) return 'Two Pokémon are needed: one to offer and one to keep.';
     return null;
@@ -1728,6 +1928,7 @@ function render() {
     $('bridge-facts').hidden = !state.bridge?.stats;
     renderGame();
     renderCelio();
+    renderGift();
     if (state.bridge) setLine('bridge-status', 'Carrying the link. Keep this tab open and in view.', 'good');
     else if (state.bridgeNote) setLine('bridge-status', state.bridgeNote.text, state.bridgeNote.tone);
     else setLine('bridge-status', blocker ?? 'Ready.');
@@ -1755,7 +1956,7 @@ function drawSteps() {
 // ---------------------------------------------------------------- start-up
 
 function wireUp() {
-    for (const id of ['esp-status', 'keys-status', 'adapter-status', 'adapter-file-status', 'bridge-status', 'wiring-status', 'trade-status']) $(id).dataset.base = 'status';
+    for (const id of ['esp-status', 'keys-status', 'adapter-status', 'adapter-file-status', 'bridge-status', 'wiring-status', 'trade-status', 'gift-note']) $(id).dataset.base = 'status';
 
     $('esp-primary').addEventListener('click', () => espActions.primary?.());
     $('esp-secondary').addEventListener('click', () => espActions.secondary?.());
@@ -1857,6 +2058,11 @@ function wireUp() {
         renderCelio();
     });
     $('celio-server-reset').addEventListener('click', () => { state.celioServer = CELIO_SERVER; remember(CELIO_STORE, null); renderCelio(); });
+    $('gift-event').addEventListener('change', (event) => chooseGiftEvent(event.target.value));
+    $('gift-start').addEventListener('click', giftStart);
+    $('gift-stop').addEventListener('click', () => giftStop());
+    $('gift-again').addEventListener('click', () => giftDecide(true));
+    $('gift-keep').addEventListener('click', () => giftDecide(false));
     $('bridge-start').addEventListener('click', onBridgeStart);
     $('bridge-stop').addEventListener('click', () => stopBridge());
     $('wiring-check').addEventListener('click', onWiringCheck);
@@ -1885,7 +2091,7 @@ function wireUp() {
 
     navigator.usb?.addEventListener('connect', onUsbConnect);
     // Release the adapter port if the page closes while bridging.
-    window.addEventListener('pagehide', () => { if (state.bridge) state.bridge.stop(); state.celio?.leave(); });
+    window.addEventListener('pagehide', () => { if (state.bridge) state.bridge.stop(); state.celio?.leave(); state.gift?.stop(); });
 }
 
 async function start() {
@@ -1897,6 +2103,7 @@ async function start() {
     state.game = remembered(GAME_STORE) === 'cable' ? 'cable' : 'wireless';
     state.bypassNationally = remembered(BYPASS_STORE) === '1';
     state.celioServer = remembered(CELIO_STORE) ?? CELIO_SERVER;
+    state.giftEvent = remembered(GIFT_STORE);
     state.poolServer = remembered(SERVER_STORE) || POOL_SERVER;
     loadKept();
     const serial = EspDevice.available();
