@@ -27,4 +27,14 @@ config PIA_STATIC_ZSTD_CONTEXT
     help
         40 KB of static data. Turn it off on a chip whose static data region is too small
         (the original ESP32); the context then comes from the heap at the start of boot.
+config BRIDGE_USB_RX_BUFFER
+    int "USB console receive buffer, in bytes"
+    default 32768
+    help
+        Heap for data from the web client or PC until the bridge reads it. The driver
+        drops what does not fit, so a smaller buffer only suits a board whose host sends
+        little at a time (the web client).
+config BRIDGE_USB_TX_BUFFER
+    int "USB console send buffer, in bytes"
+    default 8192
 endmenu

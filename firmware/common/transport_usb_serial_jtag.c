@@ -8,7 +8,8 @@ static uint32_t dropped;
 
 void bridge_transport_init(void)
 {
-    usb_serial_jtag_driver_config_t config = {.rx_buffer_size = 32768, .tx_buffer_size = 8192};
+    usb_serial_jtag_driver_config_t config = {.rx_buffer_size = CONFIG_BRIDGE_USB_RX_BUFFER,
+                                              .tx_buffer_size = CONFIG_BRIDGE_USB_TX_BUFFER};
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
     usb_serial_jtag_vfs_use_driver();
 }

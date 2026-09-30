@@ -16,7 +16,9 @@ case $ACTION in
     *) echo "Unknown action: $ACTION"; exit 1 ;;
 esac
 set +eu; . "$SDK/export.sh" >/dev/null; set -eu
-IDF=(idf.py -C "$ROOT/$CHIP" -B "$ROOT/$CHIP/build" -DSDKCONFIG="$ROOT/$CHIP/build/sdkconfig")
+CONFIG="$ROOT/$CHIP/build/sdkconfig"
+[ "$ROOT/$CHIP/sdkconfig.defaults" -nt "$CONFIG" ] && rm -f "$CONFIG"
+IDF=(idf.py -C "$ROOT/$CHIP" -B "$ROOT/$CHIP/build" -DSDKCONFIG="$CONFIG")
 case $ACTION in
     build) "${IDF[@]}" build ;;
     flash) "${IDF[@]}" -p "$PORT" -b 460800 flash ;;
