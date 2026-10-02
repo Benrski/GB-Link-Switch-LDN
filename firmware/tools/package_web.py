@@ -18,7 +18,7 @@ FIRMWARE = ROOT / "firmware"
 OUT = ROOT / "web" / "firmware"
 
 # esptool-js chip names, and whether the board has run a session on real hardware.
-CHIPS = {"ESP32-S3": True, "ESP32-C6": False, "ESP32-C3": False, "ESP32": False}
+CHIPS = {"ESP32-S3": True, "ESP32-C6": False, "ESP32-C5": False, "ESP32-C3": False, "ESP32": False}
 
 
 def bridge_version():
