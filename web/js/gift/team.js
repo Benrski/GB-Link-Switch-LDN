@@ -247,6 +247,39 @@ AgA=`), {
         },
     },
     {
+        id: 'custom-pokemon-follow',
+        label: 'Pokémon Follow (Walks Behind You)',
+        description: 'Your lead party Pokémon walks behind you in the overworld, as in later games, if the game has an overworld sprite of its species: Pikachu, Clefairy, Jigglypuff, Wigglytuff, Meowth, Psyduck, Slowpoke, Slowbro, Seel, Machop, Machoke, Poliwrath, Voltorb, Pidgey, Pidgeot, Spearow, Fearow, Doduo, Cubone, Chansey, Kangaskhan, Lapras, Kabuto and the Nidoran family (they turn to face where they go). It steps where you stepped, jumps ledges after you and comes along through doors; you and other people walk through it. Face it and press A to hear its cry. It hides while you bike or surf. It lasts until the game is closed or reset.',
+        payloads: {
+            ...romPayloads(decodeBase64(`OAQZAFAAAAAUAMrJxRvHycgAwMnGxsnR///////////////////////////////////T4+nmAOTV
+5uji2eYA69Xg3+cA693o3ADt4+n/////////////////0+Pp5gDg2dXYAMrJxRvHycgA69Xg3+cA
+1tnc3eLY/////////////+3j6bgA3doA6NzZANvV4dkA3NXnAN3o5//////////////////////n
+5Obd6NmtANDd593oAOjc2QDY2eDd6tnm7eHV4v//////////////4+IAo8AA49oA1QDKycUbx8nI
+AL2/yM6/zK3//////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFYAAACB+vAAAIRbsFYAAACB+8AAAICrsFYAAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARx9g/wMCAbsBVgAACCMVEAADfwC9agAACGZtaGwCvZkAAAhmbWhsAtPj6eYA4NnV2ADKycUb
+x8nIANrj4ODj6+cA7ePp/uni6N3gAO3j6QDm2efZ6Kv/ztzd5wDb3droANjj2efitOgA6+Pm3wDr
+3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/AHC1DEseiAAgGIALTQ+kC0gEOCFYKVD70QlM
+CkggYApIAWhLG5sKAtAhYWkcAWABSx6AcL0IAgAEAPwDAsQCAABg/wMCAf8AAOAnAAPwtYhMIHgA
+KAvQh0iBi8kHB9FAaIVJiEID0QDwCfgA8L34I2kA8AP48LwBvABHGEcAtYBIQHkkIUhDf00tGADw
+3vhheP8pFNAkIlFDek52GDF4yQcL0DF68CkI0XF5gUIm0AG0MAB6S//34f8BvP8hYXCgcAAoANGE
+4IKw6XoJBwkPAZFpigCRK4oAIfAibE8A8IP4ArAQKHTSYHAkIUhDZU42GADwdPgoaWBgACDgcPB6
+AAkAAQ4w8HJeSAB4HiEIQgvQAPBk+ClpYWAwaYhCWNAAIOBwKYpqilTgKGlhaIhCFdBgYCh+AAkp
+fwExCRoUKQXRMHjCCQHRQAYI1BAhPSkA0R0hIXNoaaBgASDgcOB4ACg20DB4wQkB0UAGMdQwAElL
+//eD/wAg4HAhiWKJMIoIGnOK0xonewMhASgY0AIoFdACIQEwE9ABMBDQAigL0QAhASsM0AIrCdAB
+IQEzB9ABMwTQAisI0CGJYokK4BQneRgwADNL//dZ/3B4ICGIQ3BwAL0wADBL//dQ/wC9cHggIQhD
+cHBwRzhHALUiSMGNSQgq0wBoIEmAOYhCJdEoSAB4ACgh0SdIAHgCKB3SYXj/KRrQKn4SB9IOBCoD
+2AMggBoABADg0B8qaYAYMmmQQgvRHUgBcDAAF0v/9x//HEjhiUGAGkv/9xn/AL0AtQtIQSENS//3
+Ev/ggRihACKLWgIyACsB0INC+dFSCDcxiFwAvWD/AwKAIwADbZ0FCIBCAgJ0cAMCNG4DApEzBAjV
+HwYISXQGCNl0BgjJLgYIWRwGCJwQAAP2rQMCREMAA3HSBgho/gMCWqEAAAAAxQIZACMAJwAoADQA
+NgBPAFAAVgBCAEMAPgBkABAAEgAVABYAVABoAHEAcwCDAIwAHQAgACEAAADARnhxc4N9eYCBfoKG
+cH90cm6FhG91d4eTent8AAA=`), {
+                'BPGE 1.10': decodeBase64(`XAEBRw==`),
+            }),
+        },
+    },
+    {
         id: 'custom-hm-moves',
         label: 'HM Moves Without HMs',
         description: 'With the badge that allows each move, your party uses Cut, Rock Smash, Strength, Surf and Waterfall without any Pokémon knowing it: talk to the tree, rock or boulder, or press A facing the water, as usual. The first Pokémon in your party that isn’t an Egg does the work. Dark caves light up by themselves once you have the Boulder Badge, as Flash would light them. It lasts until the game is closed or reset; talk to the deliveryman again to turn it off.',
@@ -639,8 +672,8 @@ mmAAR718AAAIZm4UCCENgAAAuwFoAAAIIxUQAAPbAL25AAAIZm1obAK95wAACGZtaGwCvfsAAAhm
 bWhsAs3c1eDgAMMA5tXd59kA6NzZAMrKAOPaANnq2ebt/uHj6tkA3eIA7ePp5gDk1ebo7QDo4wDo
 3NkA4dXsrP++4+LZqwC/6tnm7QDh4+rZANzV5wDo3NkA4ePn6P7KygDd6ADX1eIA3NXq2a3/vePh
 2QDW1dffANXi7QDo3eHZq//O3N3nANvd2ugA2OPZ5+K06ADr4+bfAOvd6Nz+6Nzd5wDq2ebn3ePi
-AOPaAOjc2QDb1eHZrf8AAAAwtYGw/yAAkAtMBiXgfEAHQA8CKAnRIAAVIWpGB0sA8An4IAAGSwDw
-BfhkNAE97dEBsDC9GEfARoBCAgIlOwQIgXoECA==`), {
+AOPaAOjc2QDb1eHZrf8AAADwtYGwEkwGJeB8QAdADwIoGNEDJgAnvwAgAA0hiRkNSwDwFfgAKADQ
+AzcBPvPVAJcgABUhakYISwDwCfggAAdLAPAF+GQ0AT3e0QGw8L0YR4BCAgKRMwQIJTsECIF6BAg=`), {
                 'BPGE 1.10': decodeBase64(`XAEBRw==`),
             }),
         },
@@ -676,7 +709,7 @@ cEfYQgADJDYAAAD8AwI=`), {
     {
         id: 'custom-hidden-power',
         label: 'Hidden Power Checker & Max IVs',
-        description: 'Choose a Pokémon from your party and the deliveryman tells you the type and power of its Hidden Power, then offers to raise all six of its IVs to 31, the maximum, which makes its Hidden Power Dark-type at power 70. Its stats update right away.',
+        description: 'Choose a Pokémon from your party and the deliveryman tells you the type and power of its Hidden Power, then offers to raise all six of its IVs to 31, the maximum, which makes its Hidden Power Dark-type at power 70. Its stats update right away. Only two personalities go with six 31s in these games, so to stay legal in PKHeX it takes the one that keeps its ability: its nature becomes Modest and its gender may change. A shiny Pokémon keeps its personality and shininess instead (PKHeX won’t pass it).',
         payloads: {
             ...romPayloads(decodeBase64(`BQTJAB0AAAAIAMLDvr6/yADKydG/zAAtAMPQzf////////////////////////////+93NnX3wDd
 6LgA6NzZ4gDh1ewA3ej/////////////////////////zdnZANUAysnFG8fJyLTnAMLDvr6/yADK
@@ -685,27 +718,31 @@ ydG/zLj//////////////+jc2eIA5tXd59kA1eDgAN3o5wDD0OcA6OMApKL////////////////d
 v8jOv8yt/////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
 ////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
 Wh+uAAAIUrsF0gAACB+vAAAIRbsF0gAACB+8AAAICrsF0gAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
-mmAAR73cAAAIZm0jFRAAA3QCuFEAAAglnwAnIQSABgC7BM8AAAgmDYBHASENgJwBuwHFAAAIfwAE
-gCMVEAADdQGDAgWAvR4BAAhmbb1GAQAIZm4UCCENgAAAuwG7AAAIIxUQAAOjASMVEAADSAGDAgWA
-vWcBAAhmbWhsAr2mAQAIZm1obAK9/wAACGZtaGwCaGwCvboBAAhmbWhsAtHc4+fZAMLDvr6/yADK
+mmAAR73cAAAIZm0jFRAAA2ADuFEAAAglnwAnIQSABgC7BM8AAAgmDYBHASENgJwBuwHFAAAIfwAE
+gCMVEAADjQGDAgWAvR4BAAhmbb1GAQAIZm4UCCENgAAAuwG7AAAIIxUQAAO7ASMVEAADYAGDAgWA
+vX4BAAhmbWhsAr29AQAIZm1obAK9/wAACGZtaGwCaGwCvdEBAAhmbWhsAtHc4+fZAMLDvr6/yADK
 ydG/zADn3OPp4NgAw/7X3NnX36z/u+IAv8HBAN/Z2eTnAN3o5wDk4+vZ5gDc3djY2eKr//0CtOcA
 wsO+vr/IAMrJ0b/MAN3n/v0Drujt5Nm4AOTj69nmAP0Erf/N3NXg4ADDAObV3efZANXg4ADd6OcA
-w9Dn/ujjAKSirP+74OAA3ejnAMPQ5wDV5tkApKIA4uPrq/vD6OcAwsO+vr/IAMrJ0b/MAN3n/v0D
-rujt5Nm4AOTj69nmAP0Erf+94+HZANbV198A1eLtAOjd4dmr/87c3ecA293a6ADY49nn4rToAOvj
-5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt//C1APBZ+AQAACUAJgAnIAAnIckZJ0sA
-8ED4QQgBIhBAEUC4QLlABUMOQwE3Bi/u0SggcEM/IQbfHjAYSUiADyBoQz8hBt8BMAkoANMBMADw
-Hvjwvf8g/+dwtYGwBgAA8Cv4BAAnJQEgMEB2CB4wAJAgACkAakYKSwDwD/gBNS0t8dEgAAdLAPAI
-+AGwcL0HIUFDBUgJGAVIBUsYR7xwAwIlOwQIJRwECGzNJAjwHAICrcgACJEzBAgDSACIZCFIQwJJ
-QBhwR8BGvHADAoBCAgIHSABoB0lAGAdJmmgSGlIYmmD5IpIABDqDWItQ+9FwR9hCAAMkNgAAAPwD
-Ag==`), {
-                'BPGE 1.10': decodeBase64(`XAEBR+gDAUg=`),
+w9DnAOjj/qSirADD6OcA4tXo6ebZAOHV7QDX3NXi29mt/7vg4ADd6OcAw9DnANXm2QCkogDi4+ur
++8Po5wDCw76+v8gAysnRv8wA3ef+/QOu6O3k2bgA5OPr2eYA/QSt/73j4dkA1tXX3wDV4u0A6N3h
+2av/ztzd5wDb3droANjj2efitOgA6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/
+APC1APCt+AQAACUAJgAnIAAnIckZMksA8Fb4QQgBIhBAEUC4QLlABUMOQwE3Bi/u0SggcEM/IQbf
+HjAjSUiADyBoQz8hBt8BMAkoANMBMADwNPjwvRC1APCD+AQAIWhgaEhAAgxQQAAEAAwIKAbTSQgc
+SQDSHEkgAADwOPj/IADwAfgQvXC1gbAGAADwafgEACclASAwQHYIHjAAkCAAKQBqRgpLAPAP+AE1
+LS3x0SAAB0sA8Aj4AbBwvQchQUMFSAkYBUgFSxhHvHADAiU7BAglHAQIbM0kCPAcAgKtyAAIkTME
+CKkRUGhyb0L58LWVsAUADwAuaDAAAPAr+AyQOAAA8Cf4DZAAJAyY4EADIxhADCJQQyAwKBgNmeFA
+GUBRQ2lEAyIDaHNAe0ALYAQwBDEBOvfRAjQILObRaUYoACAwLCKLWINQBDr71S9gASAVsPC9ALUY
+IQDwD/gMoQhcAL0DSACIZCFIQwJJQBhwR8BGvHADAoBCAgLJBsoOiEIA00AakUIB0EkI+OdwR+S0
+2Jx4bOGx0pNyY8mNxodOSzktNiceGwdIAGgHSUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH2EIA
+AyQ2AAAA/AMC`), {
+                'BPGE 1.10': decodeBase64(`XAEBRywEAUg=`),
             }),
         },
     },
     {
         id: 'custom-hidden-power-type',
         label: 'Hidden Power Type Changer',
-        description: 'Choose a Pokémon from your party, then physical or special and one of the eight types of that kind: its Hidden Power becomes that type at power 70, the most there is. Its IVs become 30 or 31 each, with HP and Attack at 31, and its stats update right away.',
+        description: 'Choose a Pokémon from your party, then physical or special and one of the eight types of that kind: its Hidden Power becomes that type at power 70, the most there is. Its IVs become 30 or 31 each, with HP and Attack at 31, and its stats update right away. PKHeX won’t pass the result: its IVs no longer go with its personality.',
         payloads: {
             ...romPayloads(decodeBase64(`IQTJADkAAAAYAMLDvr6/yADKydG/zADO08q///////////////////////////////+74u0A6O3k
 2bgA5OPr2eYAqKH/////////////////////////////wd3q2QDVAMrJxRvHyci05wDCw76+v8gA
@@ -826,7 +863,7 @@ AwoIHZ8PCAIEBgcJCw0OA0gAiGQhSEMCSUAYcEfARrxwAwKAQgICB0gAaAdJQBgHSZpoEhpSGJpg
     {
         id: 'custom-nature-mint',
         label: 'Nature Mint (Change Nature)',
-        description: 'Choose a Pokémon from your party, then the stat its new nature raises and the one it lowers (the same stat twice gives a neutral nature). It keeps its gender, ability and shininess, and its stats update right away.',
+        description: 'Choose a Pokémon from your party, then the stat its new nature raises and the one it lowers (the same stat twice gives a neutral nature). It keeps its gender, ability and shininess, and its stats update right away. Its IVs come with the new personality, as a wild Pokémon’s do, so PKHeX finds it legal.',
         payloads: {
             ...romPayloads(decodeBase64(`/wMrABcAAAAMAMi7zs/MvwDHw8jO//////////////////////////////////////+7ANrm2efc
 AOLZ6wDi1ejp5tn/////////////////////////////yt3X3wDo3NkA5+jV6ADVAMrJxRvHyci0
@@ -834,32 +871,32 @@ AOLZ6wDi1ejp5tn/////////////////////////////yt3X3wDo3NkA5+jV6ADVAMrJxRvHyci0
 4+vZ5uetANDd593oAOjc2QDY2eDd6tnm7eHV4v//////////////4+IAo8AA49oA1QDKycUbx8nI
 AL2/yM6/zK3//////////////////8G8rsbd4t8AztnV4f//////////////////////////////
 ////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
-Wh+uAAAIUrsFyQAACB+vAAAIRbsFyQAACB+8AAAICrsFyQAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
-mmAAR73TAAAIZm0jFRAAA2gDuFEAAAglnwAnIQSABgC7BMYAAAh/AASAvfEAAAhmIxUQAAMXASch
-DYB/ALsBxgAACBkFgA2AvQ0BAAhmIxUQAAP5ACchDYB/ALsBxgAACCMVEAAD8AAhDYAAALsBvAAA
-CL0oAQAIZm1obAK9NgEACGZtaGwCaGwCvU8BAAhmbWhsAtHc4+fZAOLV6Onm2QDn3OPp4NgAwwDX
-3NXi29ms/9Hc3dfcAOfo1egA59zj6eDYAN3oAObV3efZrP+74tgA69zd19wA59zj6eDYAN3oAODj
-69nmrP/9AgDd5wD9AwDi4+ur/87c1egA2N3Y4rToAOvj5t+4AOfj5ubtq//O3N3nANvd2ugA2OPZ
-5+K06ADr4+bfAOvd6Nz+6Nzd5wDq2ebn3ePiAOPaAOjc2QDb1eHZrf8AAAASSAQwBSEIIi7gMLUQ
-SEWIBSFNQw9IAIgtGADw5fgEACF4KgAA8Hz4CkkIgAAoCtAgAAlLAPAI+AhJrQBJWQhICEsA8AH4
-ML0YR8BGlLA/CLxwAwLMcAMCJRwECGwYRgjwHAICrcgACPC1hbANABcAIU4AIwLIACIGxgEzq0L5
-0R1OHCDAGwAhOgAjo2weG10bTADwL/gHAAAhGkwA8Cr4DiEAkQGVApYAIQORAiEEkTgACCICIxRM
-APAc+A4hAJEBlQAhApE4AAIhACICIw9MAPAQ+AAgKQA6AAIjDEwA8An4ACALTADwBfgESP8hAYAF
-sPC9IEfARrD7AwLMcAMCuQ0KCMmuDwh5NBEIaTARCH0DCggdnw8IAgQGBwkLDQ7wtZCwBQANkQyS
-LmgwDDEECQxIQA6QKAALISpLAPBQ+AEkACfJKALRBCS3Bb8POQINmAFDDphIQAAECEMPkBkhAPBO
-+AyZiEIE0D8ZOAru0AAgLOAPnzAAAPAr+AyQOAAA8Cf4DZAAJAyY4EADIxhADCJQQyAwKBgNmeFA
-GUBRQ2lEAyIDaHNAe0ALYAQwBDEBOvfRAjQILObRaUYoACAwLCKLWINQBDr71S9gASAQsPC9ALUY
-IQDwE/gOoQhcAL0YR8BGkTMECANIAIhkIUhDAklAGHBHwEa8cAMCgEICAskGyg6IQgDTQBqRQgHQ
-SQj453BH5LTYnHhs4bHSk3JjyY3Gh05LOS02Jx4bB0gAaAdJQBgHSZpoEhpSGJpg+SKSAAQ6g1iL
-UPvRcEfYQgADJDYAAAD8AwI=`), {
-                'BPGE 1.10': decodeBase64(`XAEBRyQDAtCuNAMCnBLYAxaNDQoIoa4PCFE0EQhBMBEIUQMKCPWe`),
+Wh+uAAAIUrsFtAAACB+vAAAIRbsFtAAACB+8AAAICrsFtAAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAAR72+AAAIZm0jFRAAA2QDuFEAAAglnwAnIQSABgC7BLEAAAh/AASAvdwAAAhmIxUQAAPTACch
+DYB/ALsBsQAACBkFgA2Ave4AAAhmIxUQAAO1ACchDYB/ALsBsQAACCMVEAADrAC9AAEACGZtaGwC
+aGwCvQ4BAAhmbWhsAtHc4+fZAOLV6Onm2QDn3OPp4NgAwwDX3NXi29ms/8zV3efZAOvc3dfcAOfo
+1eis/8bj69nmAOvc3dfcAOfo1eis//0CAN3nAP0DAOLj66v/ztzd5wDb3droANjj2efitOgA6+Pm
+3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/EEgEMAUhCCIo4DC1DkhFiAUhTUMNSACI
+LRgA8BH5BAAheCoAAPB2+AhJCIAAKAbQB0mtAElZB0gHSwDwAfgwvRhHwEaUsD8IvHADAsxwAwJs
+GEYI8BwCAq3IAAjwtYWwDQAXACFOACMCyAAiBsYBM6tC+dEdThwgwBsAIToAI6NsHhtdG0wA8C/4
+BwAAIRpMAPAq+A4hAJEBlQKWACEDkQIhBJE4AAgiAiMUTADwHPgOIQCRAZUAIQKROAACIQAiAiMP
+TADwEPgAICkAOgACIwxMAPAJ+AAgC0wA8AX4BEj/IQGABbDwvSBHwEaw+wMCzHADArkNCgjJrg8I
+eTQRCGkwEQh9AwoIHZ8PCAIEBgcJCw0O8LWVsAUADZEMki5oEZYwABghAPCX+BSQqIjpiEhAMQxB
+QDIEEgxRQAgpAdMAIMBDDpAoAAshN0sA8Gr4DZ8AIskoANE4ShOSPgQ1STQATEM0SqQYATYySWQY
+MAy4Qi7RIAwOmlMcA9BCQHpACCrx0gAEOEMRmkJAE5saQurRD5AZIQDwX/gMmYhC49EPmBghAPBY
++BSZiELc0SFJIUogAEhDgBgDAEtDmxhAAEAMWwBbDNsDGEMQkA+fEZ4F4P83ATc4DMDQACAg4DEA
+eUAoACAwLCKDWEtAg1AEOvrVL2AAJBCYQQkQkR8hCEAPkCgAJyEJGQ+qCUsA8Ar4ATQGLO/RKAAE
+SwDwA/gBIBWw8L0YR8BGkTMECCUcBAglOwQIbU7GQXNgAAAAAwMDA0gAiGQhSEMCSUAYcEfARrxw
+AwKAQgICyQbKDohCANNAGpFCAdBJCPjncEcHSABoB0lAGAdJmmgSGlIYmmD5IpIABDqDWItQ+9Fw
+R9hCAAMkNgAAAPwDAg==`), {
+                'BPGE 1.10': decodeBase64(`XAEBR9gCAtCu5AICnBKIAxaNDQoIoa4PCFE0EQhBMBEIUQMKCPWe`),
             }),
         },
     },
     {
         id: 'custom-ability-capsule',
         label: 'Ability Capsule (Swap Ability)',
-        description: 'Switches a Pokémon from your party to the other ability its species can have, keeping its nature, gender and shininess. Species with only one ability can’t switch.',
+        description: 'Switches a Pokémon from your party to the other ability its species can have, keeping its nature, gender and shininess. Species with only one ability can’t switch. Its IVs come with the new personality, as a wild Pokémon’s do, so PKHeX finds it legal.',
         payloads: {
             ...romPayloads(decodeBase64(`AATpABgAAAAYALu8w8bDztMAvbvKzc/Gv//////////////////////////////////O5u0A3ejn
 AOPo3NnmANXW3eDd6O3/////////////////////////zevd6NfcANUAysnFG8fJyADo4wDo3NkA
@@ -868,20 +905,23 @@ AOPo3NnmANXW3eDd6O3/////////////////////////zevd6NfcANUAysnFG8fJyADo4wDo3NkA
 zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
 ////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
 Wh+uAAAIUrsFrAAACB+vAAAIRbsFrAAACB+8AAAICrsFrAAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
-mmAAR722AAAIZm0jFRAAA8gCuFEAAAglnwAnIQSABgC7BKkAAAgmDYBHASENgJwBuwGfAAAIfwAE
+mmAAR722AAAIZm0jFRAAA2ADuFEAAAglnwAnIQSABgC7BKkAAAgmDYBHASENgJwBuwGfAAAIfwAE
 gCMVEAAD4QAhDYAAALsBlQAACL30AAAIZm1obAK9DAEACGZtaGwCvdUAAAhmbWhsAmhsAr0lAQAI
 Zm1obALR3OPn2QDV1t3g3ejtAOfc4+ng2ADDAOfr3ejX3Kz/u+IAv8HBANfV4rToAOfr3ejX3ADV
 1t3g3ejd2eer//0CtOcA1dbd4N3o7QDd5wDi4+v+/QOr//0CANzV5wDj4uDtAOPi2f7V1t3g3ejt
 rf/O3N3nANvd2ugA2OPZ5+K06ADr4+bfAOvd6Nz+6Nzd5wDq2ebn3ePiAOPaAOjc2QDb1eHZrf8A
-8LWBsADwtvgEAAshIUsA8D34HCFIQyFJRhgAIPF9ACkw0CV4ASdvQDJ8ACoL0P4qCdKVQoBBl0KJ
-QYhCA9BvHmgIANNvHCBoGSEA8J/4AgA5ACAAAPAq+AAoE9ABIAdAAJcgAC4hakYLSwDwD/gWNvFd
+8LWBsADwAvkEAAshIUsA8D34HCFIQyFJRhgAIPF9ACkw0CV4ASdvQDJ8ACoL0P4qCdKVQoBBl0KJ
+QYhCA9BvHmgIANNvHCBoGSEA8Ov4AgA5ACAAAPAq+AAoE9ABIAdAAJcgAC4hakYLSwDwD/gWNvFd
 DSBBQwpICRgKSApLAPAF+AEgAkkIgAGw8L0YR8BGzHADApEzBAglOwQIUCMlCAzYJAjwHAICrcgA
-CPC1kLAFAA2RDJIuaDAMMQQJDEhADpAoAAshKksA8FD4ASQAJ8koAtEEJLcFvw85Ag2YAUMOmEhA
-AAQIQw+QGSEA8E74DJmIQgTQPxk4Cu7QACAs4A+fMAAA8Cv4DJA4AADwJ/gNkAAkDJjgQAMjGEAM
-IlBDIDAoGA2Z4UAZQFFDaUQDIgNoc0B7QAtgBDAEMQE699ECNAgs5tFpRigAIDAsIotYg1AEOvvV
-L2ABIBCw8L0AtRghAPAT+A6hCFwAvRhHwEaRMwQIA0gAiGQhSEMCSUAYcEfARrxwAwKAQgICyQbK
-DohCANNAGpFCAdBJCPjncEfktNiceGzhsdKTcmPJjcaHTks5LTYnHhsHSABoB0lAGAdJmmgSGlIY
-mmD5IpIABDqDWItQ+9FwR9hCAAMkNgAAAPwDAg==`), {
+CPC1lbAFAA2RDJIuaBGWqIjpiEhAMQxBQDIEEgxRQAgpAdMAIMBDDpAoAAshRksA8Ir4DZ8AIsko
+ANFIShOSPgRESTQATENESqQYATZBSWQYMAy4QifRIAwOmlMcA9BCQHpACCrx0gAEOEMRmkJAE5sa
+QurRD5AZIQDwfvgMmYhC49E0STRKIABIQ4AYAwBLQ5sYQABADFsAWwzbAxhDEJAPnxGeBeD/NwE3
+OAzH0AAgQOAwAADwQPgMkDgAAPA8+A2QACQMmOBAAyMYQAwiUEMgMCgYDZnhQBlAUUNpRAMiA2hz
+QHtAC2AEMAQxATr30QI0CCzm0WlGKAAgMCwii1iDUAQ6+9UvYAAkEJhBCRCRHyEIQA+QKAAnIQkZ
+D6oMSwDwEfgBNAYs79EoAAdLAPAK+AEgFbDwvQC1GCEA8Bz4EqEIXAC9GEeRMwQIJRwECCU7BAht
+TsZBc2AAAAADAwMDSACIZCFIQwJJQBhwR8BGvHADAoBCAgLJBsoOiEIA00AakUIB0EkI+OdwR+S0
+2Jx4bOGx0pNyY8mNxodOSzktNiceGwdIAGgHSUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH2EIA
+AyQ2AAAA/AMC`), {
                 'BPGE 1.10': decodeBase64(`XAEBR0gDBiwjJQjo1w==`),
             }),
         },
@@ -920,7 +960,7 @@ SUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH2EIAAyQ2AAAA/AMC`), {
     {
         id: 'custom-pokemon-gender',
         label: 'Pokémon Gender Change',
-        description: 'Switches a Pokémon from your party between male and female, handy for breeding. It keeps its nature, ability and shininess. Species that are always one gender, or have none, can’t switch.',
+        description: 'Switches a Pokémon from your party between male and female, handy for breeding. It keeps its nature, ability and shininess. Species that are always one gender, or have none, can’t switch. Its IVs come with the new personality, as a wild Pokémon’s do, so PKHeX finds it legal.',
         payloads: {
             ...romPayloads(decodeBase64(`AQQgABkAAAAQAMrJxRvHycgAwb/Ivr/MAL3Cu8jBv//////////////////////////A4+YA6NzZ
 AOTZ5trZ1+gA5NXd5v//////////////////////////zevd6NfcANUAysnFG8fJyADW2ejr2dni
@@ -929,20 +969,22 @@ AOHV4Nn//////////////9Xi2ADa2eHV4NmtANDd593oAOjc2f/////////////////////////Y
 zK3//////////////////////////8G8rsbd4t8AztnV4f//////////////////////////////
 ////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
 Wh+uAAAIUrsFwQAACB+vAAAIRbsFwQAACB+8AAAICrsFwQAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
-mmAAR73LAAAIZm0jFRAAA7gCuFEAAAglnwAnIQSABgC7BL4AAAgmDYBHASENgJwBuwG0AAAIfwAE
+mmAAR73LAAAIZm0jFRAAA1ADuFEAAAglnwAnIQSABgC7BL4AAAgmDYBHASENgJwBuwG0AAAIfwAE
 gCMVEAADFQEhDYAAALsBqgAACCENgAIAuwGgAAAIvRYBAAhmbWhsAr0mAQAIZm1obAK9OAEACGZt
 aGwCve8AAAhmbWhsAmhsAr1XAQAIZm1obALR3N3X3ADKycUbx8nIAOfc4+ng2ADn693o19z+29ni
 2NnmrP/G2ei05wDr1d3oANrj5gDo3NkAv8HBAOjj/tzV6NfcANrd5ufoq//9AgDd5wDi4+sA4dXg
 2av//QIA3ecA4uPrANrZ4dXg2av//QK05wDb2eLY2eYA19XitOj+1tkA5+vd6Nfc2dit/87c3ecA
-293a6ADY49nn4rToAOvj5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt/wAAAHC1APCV
+293a6ADY49nn4rToAOvj5t8A693o3P7o3N3nAOrZ5ufd4+IA49oA6NzZANvV4dmt/wAAAHC1APDh
 +AQACyEVSwDwJPgcIUhDE0lAGAJ8ACYAKhjQ/ioW0iV4EQBpQAEgAUABJpVCAdMCOgImVRggaBkh
-APCD+AIAKQAgAADwDvgAKADRACYCSQ6AcL0YR8BGzHADApEzBAhQIyUI8LWQsAUADZEMki5oMAwx
-BAkMSEAOkCgACyEqSwDwUPgBJAAnySgC0QQktwW/DzkCDZgBQw6YSEAABAhDD5AZIQDwTvgMmYhC
-BNA/GTgK7tAAICzgD58wAADwK/gMkDgAAPAn+A2QACQMmOBAAyMYQAwiUEMgMCgYDZnhQBlAUUNp
-RAMiA2hzQHtAC2AEMAQxATr30QI0CCzm0WlGKAAgMCwii1iDUAQ6+9UvYAEgELDwvQC1GCEA8BP4
-DqEIXAC9GEfARpEzBAgDSACIZCFIQwJJQBhwR8BGvHADAoBCAgLJBsoOiEIA00AakUIB0EkI+Odw
-R+S02Jx4bOGx0pNyY8mNxodOSzktNiceGwdIAGgHSUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH
-2EIAAyQ2AAAA/AMC`), {
+APDP+AIAKQAgAADwDvgAKADRACYCSQ6AcL0YR8BGzHADApEzBAhQIyUI8LWVsAUADZEMki5oEZao
+iOmISEAxDEFAMgQSDFFACCkB0wAgwEMOkCgACyFGSwDwivgNnwAiySgA0UhKE5I+BERJNABMQ0RK
+pBgBNkFJZBgwDLhCJ9EgDA6aUxwD0EJAekAIKvHSAAQ4QxGaQkATmxpC6tEPkBkhAPB++AyZiELj
+0TRJNEogAEhDgBgDAEtDmxhAAEAMWwBbDNsDGEMQkA+fEZ4F4P83ATc4DMfQACBA4DAAAPBA+AyQ
+OAAA8Dz4DZAAJAyY4EADIxhADCJQQyAwKBgNmeFAGUBRQ2lEAyIDaHNAe0ALYAQwBDEBOvfRAjQI
+LObRaUYoACAwLCKLWINQBDr71S9gACQQmEEJEJEfIQhAD5AoACchCRkPqgxLAPAR+AE0Bizv0SgA
+B0sA8Ar4ASAVsPC9ALUYIQDwHPgSoQhcAL0YR5EzBAglHAQIJTsECG1OxkFzYAAAAAMDAwNIAIhk
+IUhDAklAGHBHwEa8cAMCgEICAskGyg6IQgDTQBqRQgHQSQj453BH5LTYnHhs4bHSk3JjyY3Gh05L
+OS02Jx4bB0gAaAdJQBgHSZpoEhpSGJpg+SKSAAQ6g1iLUPvRcEfYQgADJDYAAAD8AwI=`), {
                 'BPGE 1.10': decodeBase64(`XAEBR0QDASw=`),
             }),
         },
@@ -950,7 +992,7 @@ R+S02Jx4bOGx0pNyY8mNxodOSzktNiceGwdIAGgHSUAYB0maaBIaUhiaYPkikgAEOoNYi1D70XBH
     {
         id: 'custom-unown-letters',
         label: 'Unown Letter Changer',
-        description: 'Choose an Unown from your party and type the letter it should be, A to Z, ! or ?, on the naming screen; its nickname stays as it was. It keeps its nature and whether it is shiny.',
+        description: 'Choose an Unown from your party and type the letter it should be, A to Z, ! or ?, on the naming screen; its nickname stays as it was. It keeps its nature and whether it is shiny. PKHeX won’t pass the result: each chamber of the Tanoby Ruins has its own letters.',
         payloads: {
             ...romPayloads(decodeBase64(`IATJADgAAAAYAM/IydHIAMa/zs6/zAC9wrvIwb/M///////////////////////////A5uPhALsA
 6OMArP//////////////////////////////////////wd3q2QDV4gDPyMnRyADV4u0A49oA3ejn
@@ -971,8 +1013,8 @@ OhoqB9MaIqsoBNAbIqwoAdACIFHgAJK7IBoqANORIIAYCHD/IEhwAPCd+AQAJmgwABkhAPCj+AUA
 YGgBDEhAAAQADAKQMQxxQAkECQxIQAgoAdMAIclDAZEAIAOQIUsA8Dv4BwAfSwDwN/gBmUocBNBA
 B0APSEB4QAXgAQB5QAKaUUAIKQzTAAQHQzgAGSEA8HX4qEIE0QDwE/gAmYhCBtADmAEwA5AADNjQ
 ACAE4CAAOQAA8B34ASAISQiABLDwvQAgGCGAADoAykADIxpAEEMIOffVHCFR4BhHIEfMcAMC8BwC
-AnGGBAi5EAoIpaAFCPC1kLAFAA8ALmgwAADwK/gMkDgAAPAn+A2QACQMmOBAAyMYQAwiUEMgMCgY
-DZnhQBlAUUNpRAMiA2hzQHtAC2AEMAQxATr30QI0CCzm0WlGKAAgMCwii1iDUAQ6+9UvYAEgELDw
+AnGGBAi5EAoIpaAFCPC1lbAFAA8ALmgwAADwK/gMkDgAAPAn+A2QACQMmOBAAyMYQAwiUEMgMCgY
+DZnhQBlAUUNpRAMiA2hzQHtAC2AEMAQxATr30QI0CCzm0WlGKAAgMCwii1iDUAQ6+9UvYAEgFbDw
 vQC1GCEA8A/4DKEIXAC9A0gAiGQhSEMCSUAYcEfARrxwAwKAQgICyQbKDohCANNAGpFCAdBJCPjn
 cEfktNiceGzhsdKTcmPJjcaHTks5LTYnHhsHSABoB0lAGAdJmmgSGlIYmmD5IpIABDqDWItQ+9Fw
 R9hCAAMkNgAAAPwDAg==`), {

@@ -99,12 +99,37 @@ export class EspDevice extends EventTarget {
                 await this.attach(i === rates.length - 1);
                 return;
             } catch (error) {
-                failure = error;
-                await this.close();
-                if (error.code === 'port-lost' || error.code === 'crash-loop') break;
+                failure = moreTelling(failure, error);
             }
+            // A dev board can be left in the ROM's download mode by the way the operating
+            // system moved DTR and RTS as the port opened; its 115200 output is unreadable
+            // here. Restarting it into its firmware is the one way to know.
+            if (rates[i] === FAST_BAUD && !this.readEnded && failure.code !== 'crash-loop') {
+                try {
+                    await this.resetChip();
+                    await this.attach(true);
+                    return;
+                } catch (error) {
+                    failure = moreTelling(failure, error);
+                }
+            }
+            await this.close();
+            if (failure.code === 'port-lost' || failure.code === 'crash-loop') break;
         }
         throw failure;
+    }
+
+    // RTS without DTR holds EN low through the dev board's auto-reset circuit. DTR is let go
+    // first and stays so: IO0 high as EN rises boots the firmware, not download mode.
+    async resetChip() {
+        this.bootText = '';
+        this.bootSignAt = 0;
+        try {
+            await this.port.setSignals({ dataTerminalReady: false });
+            await this.port.setSignals({ requestToSend: true });
+            await sleep(100);
+            await this.port.setSignals({ requestToSend: false });
+        } catch {}
     }
 
     async openPort(port, baudRate) {
@@ -200,7 +225,7 @@ export class EspDevice extends EventTarget {
         if (project && !project.startsWith('ldn_bridge')) {
             return Object.assign(new Error(`This board is running other firmware (${project}).`), { code: 'no-firmware' });
         }
-        return Object.assign(new Error('No bridge firmware answered on this port.'), { code: 'no-firmware' });
+        return Object.assign(new Error('No bridge firmware answered on this port.'), { code: 'no-firmware', silent: true });
     }
 
     async readLoop() {
@@ -420,7 +445,9 @@ export async function reopenPort(previous, attempts = 12) {
                 return device;
             } catch (error) {
                 await device.close();
-                if (error.code !== 'port-busy') throw error;   // otherwise not back yet, or stale
+                // Not back yet, or stale. Silence from a board just written to gets two
+                // more opens, each with its own restart.
+                if (error.code !== 'port-busy' && !(error.silent && attempt < 2)) throw error;
             }
         }
     }
@@ -429,6 +456,12 @@ export async function reopenPort(previous, attempts = 12) {
 
 function safeInfo(port) {
     try { return port?.getInfo?.() ?? {}; } catch { return {}; }
+}
+
+// Of two failed attempts, the one whose output said why; plain silence at a later rate
+// says less than what the chip printed at an earlier one.
+function moreTelling(earlier, later) {
+    return earlier && later.silent && !earlier.silent ? earlier : later;
 }
 
 function parseInfo(line) {

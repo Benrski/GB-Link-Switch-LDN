@@ -305,4 +305,4 @@ footer p { color: var(--muted); font-size: 0.82rem; }
 .gift-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 16px 0 0; }
 .gift-pick label { color: var(--muted); font-size: 0.9rem; }
 #gift-event { flex: 1 1 18em; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: inherit; font: inherit; }
-#gift-description { margin-top: 8px; }
+#gift-description { margin-top: 12px; }
