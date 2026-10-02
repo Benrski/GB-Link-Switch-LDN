@@ -10,13 +10,14 @@ need this page.
 
 ## Boards
 
-One source tree (`common/`) builds for four chips. The ESP32-S3 is the recommended one.
+One source tree (`common/`) builds for five chips. The ESP32-S3 is the recommended one.
 
 | Folder | Console | TX, to GB-Link GP9 | RX, to GB-Link GP8 |
 | --- | --- | --- | --- |
 | `ESP32` | USB-UART chip, 921600 baud | GPIO17 (TX2) | GPIO16 (RX2) |
 | `ESP32-S3` | native USB | GPIO2 | GPIO1 |
 | `ESP32-C6` | native USB | GPIO2 | GPIO1 |
+| `ESP32-C5` | native USB | GPIO0 | GPIO1 |
 | `ESP32-C3` | native USB | GPIO5 | GPIO4 |
 
 Connect ground to ground as well. If the link stays silent, the two data wires are
@@ -25,6 +26,7 @@ probably swapped: `LDN_PICO_SWAP` swaps them in software until the next restart.
 Tested boards: Seeed Studio XIAO ESP32-S3 (attach its antenna), ESP32-S3-N16R8,
 M5Stack AtomS3, Seeed Studio XIAO ESP32-C6, a DOIT ESP32 DEVKIT V1 and an ESP32-C3
 board. On the XIAO ESP32-C6, `LDN_ANTENNA 0|1` picks the onboard or external antenna.
+The Seeed Studio XIAO ESP32-C5 has no onboard antenna: attach its external one.
 
 ## Building
 

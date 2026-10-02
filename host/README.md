@@ -29,7 +29,7 @@ nothing needs to be stored on the board.
 
 ## Supported boards
 
-Any board the bridge firmware runs on: ESP32-S3, ESP32-C6, ESP32-C3 and the original ESP32, as
+Any board the bridge firmware runs on: ESP32-S3, ESP32-C6, ESP32-C5, ESP32-C3 and the original ESP32, as
 listed in [`firmware/README.md`](../firmware/README.md). A UART console (the original ESP32
 behind its USB-to-UART chip) runs at 921600 baud from its first line, and the hosts open every
 port at that rate; a chip's own USB port ignores it. Opening the port resets the chip on some

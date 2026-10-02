@@ -56,6 +56,7 @@ computer.
   | ESP32 (original) | USB-to-UART chip, 921600 baud |
   | ESP32-S3 | native USB |
   | ESP32-C6 | native USB |
+  | ESP32-C5 | native USB |
   | ESP32-C3 | native USB |
 
 - A Switch with FireRed or LeafGreen, and the `prod.keys` file from your Switch. The

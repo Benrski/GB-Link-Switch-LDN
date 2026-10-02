@@ -19,9 +19,9 @@ import { POOL_SERVER, PoolClient } from './trade/pool.js';
 
 const $ = (id) => document.getElementById(id);
 
-const CHIP_NAMES = { esp32: 'ESP32', esp32c3: 'ESP32-C3', esp32c6: 'ESP32-C6', esp32s3: 'ESP32-S3' };
+const CHIP_NAMES = { esp32: 'ESP32', esp32c3: 'ESP32-C3', esp32c5: 'ESP32-C5', esp32c6: 'ESP32-C6', esp32s3: 'ESP32-S3' };
 // Standalone UART link pins: [board TX -> adapter GP9, board RX <- adapter GP8].
-const LINK_PINS = { esp32: [17, 16], esp32c3: [5, 4], esp32c6: [2, 1], esp32s3: [2, 1] };
+const LINK_PINS = { esp32: [17, 16], esp32c3: [5, 4], esp32c5: [0, 1], esp32c6: [2, 1], esp32s3: [2, 1] };
 // Dev-board silkscreen labels where they differ from the GPIO number.
 const LINK_PIN_LABELS = { esp32: ['TX2', 'RX2'] };
 const KEY_NAMES = {
