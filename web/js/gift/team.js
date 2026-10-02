@@ -249,7 +249,7 @@ AgA=`), {
     {
         id: 'custom-pokemon-follow',
         label: 'Pokémon Follow (Walks Behind You)',
-        description: 'Your lead party Pokémon walks behind you in the overworld, as in later games, if the game has an overworld sprite of its species: Pikachu, Clefairy, Jigglypuff, Wigglytuff, Meowth, Psyduck, Slowpoke, Slowbro, Seel, Machop, Machoke, Poliwrath, Voltorb, Pidgey, Pidgeot, Spearow, Fearow, Doduo, Cubone, Chansey, Kangaskhan, Lapras, Kabuto and the Nidoran family (they turn to face where they go). It steps where you stepped, jumps ledges after you and comes along through doors; you and other people walk through it. Face it and press A to hear its cry. It hides while you bike or surf. It lasts until the game is closed or reset.',
+        description: 'Your lead party Pokémon walks behind you in the overworld, as in later games, if the game has an overworld sprite of its species: Pikachu, Clefairy, Jigglypuff, Wigglytuff, Meowth, Psyduck, Slowpoke, Slowbro, Seel, Machop, Machoke, Poliwrath, Voltorb, Pidgey, Pidgeot, Spearow, Fearow, Doduo, Cubone, Chansey, Kangaskhan, Lapras, Kabuto and the Nidoran family (they turn to face where they go). It steps where you stepped, jumps ledges after you and comes along through doors; you and other people walk through it, and push past it where you can’t. Face it and press A to hear its cry. It hides while you bike or surf, and steps away while a menu or battle is on (back with your next step), so a save never keeps it. It lasts until the game is closed or reset.',
         payloads: {
             ...romPayloads(decodeBase64(`OAQZAFAAAAAUAMrJxRvHycgAwMnGxsnR///////////////////////////////////T4+nmAOTV
 5uji2eYA69Xg3+cA693o3ADt4+n/////////////////0+Pp5gDg2dXYAMrJxRvHycgA69Xg3+cA
@@ -257,22 +257,22 @@ AgA=`), {
 5Obd6NmtANDd593oAOjc2QDY2eDd6tnm7eHV4v//////////////4+IAo8AA49oA1QDKycUbx8nI
 AL2/yM6/zK3//////////////////8G8rsbd4t8AztnV4f//////////////////////////////
 ////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
-Wh+uAAAIUrsFYAAACB+vAAAIRbsFYAAACB+8AAAICrsFYAAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
-mmAARx9g/wMCAbsBVgAACCMVEAADfwC9agAACGZtaGwCvZkAAAhmbWhsAtPj6eYA4NnV2ADKycUb
-x8nIANrj4ODj6+cA7ePp/uni6N3gAO3j6QDm2efZ6Kv/ztzd5wDb3droANjj2efitOgA6+Pm3wDr
-3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/AHC1DEseiAAgGIALTQ+kC0gEOCFYKVD70QlM
-CkggYApIAWhLG5sKAtAhYWkcAWABSx6AcL0IAgAEAPwDAsQCAABg/wMCAf8AAOAnAAPwtYhMIHgA
-KAvQh0iBi8kHB9FAaIVJiEID0QDwCfgA8L34I2kA8AP48LwBvABHGEcAtYBIQHkkIUhDf00tGADw
-3vhheP8pFNAkIlFDek52GDF4yQcL0DF68CkI0XF5gUIm0AG0MAB6S//34f8BvP8hYXCgcAAoANGE
-4IKw6XoJBwkPAZFpigCRK4oAIfAibE8A8IP4ArAQKHTSYHAkIUhDZU42GADwdPgoaWBgACDgcPB6
-AAkAAQ4w8HJeSAB4HiEIQgvQAPBk+ClpYWAwaYhCWNAAIOBwKYpqilTgKGlhaIhCFdBgYCh+AAkp
-fwExCRoUKQXRMHjCCQHRQAYI1BAhPSkA0R0hIXNoaaBgASDgcOB4ACg20DB4wQkB0UAGMdQwAElL
-//eD/wAg4HAhiWKJMIoIGnOK0xonewMhASgY0AIoFdACIQEwE9ABMBDQAigL0QAhASsM0AIrCdAB
-IQEzB9ABMwTQAisI0CGJYokK4BQneRgwADNL//dZ/3B4ICGIQ3BwAL0wADBL//dQ/wC9cHggIQhD
-cHBwRzhHALUiSMGNSQgq0wBoIEmAOYhCJdEoSAB4ACgh0SdIAHgCKB3SYXj/KRrQKn4SB9IOBCoD
-2AMggBoABADg0B8qaYAYMmmQQgvRHUgBcDAAF0v/9x//HEjhiUGAGkv/9xn/AL0AtQtIQSENS//3
-Ev/ggRihACKLWgIyACsB0INC+dFSCDcxiFwAvWD/AwKAIwADbZ0FCIBCAgJ0cAMCNG4DApEzBAjV
-HwYISXQGCNl0BgjJLgYIWRwGCJwQAAP2rQMCREMAA3HSBgho/gMCWqEAAAAAxQIZACMAJwAoADQA
+Wh+uAAAIUrsFVAAACB+vAAAIRbsFVAAACB+8AAAICrsFVAAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARyMVEAADYwC9XgAACGZtaGwCvXIAAAhmbWhsAsniAOni6N3gAO3j6QDm2efZ6Kv/ztzd5wDb
+3droANjj2efitOgA6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo3NkA29Xh2a3/cLUMSx6IACAY
+gAtND6QLSAQ4IVgpUPvRCUwKSCBgCkgBaEsbmwoC0CFhaRwBYAFLHoBwvQgCAAQA/AMC7AIAAGD/
+AwIB/wAA4CcAA/C1kkwgeAAoC9CRSIGLyQcH0UBoj0mIQgPRAPAJ+ADwzPgjaQDwA/jwvAG8AEcY
+RwC1ikhAeSQhSEOJTS0YAPDy+I5PP3gALwLQjU8/eH8Ig04AITJ40gcC0DJ68CoE0CQ2ATEQKfXR
+C+BhcHF5gUIB0QAvJ9ABtDAAf0v/99f/Abz/IWFwACgB0AAvANCI4IKw6XoJBwkPAZFpigCRK4oA
+IfAicE8A8If4ArAQKHjSYHAkIUhDak42GADwePgoaWBgACDgcPB6AAkAAQ4w8HJqSAB4gADwcGBI
+AHgeIQhCC9AA8GT4KWlhYDBpiEJY0AAg4HApimqKVOAoaWFoiEIV0GBgKH4ACSl/ATEJGhQpBdEw
+eMIJAdFABgjUECE9KQDRHSEhc2hpoGABIOBw4HgAKDbQMHjBCQHRQAYx1DAAS0v/93T/ACDgcCGJ
+Yokwiggac4rTGid7AyEBKBjQAigV0AIhATAT0AEwENACKAvRACEBKwzQAisJ0AEhATMH0AEzBNAC
+KwjQIYliiQrgFCd5GDAANUv/90r/cHggIYhDcHAAvTAAM0v/90H/AL1weCAhCENwcHBHOEcAtSRP
+OGgkSYA5iEIt0SxIAHgAKCnRYXj/KSbQKn4SB9IOBCoD2AMggBoABADg0B8qaYAYMmmQQhfR+I1A
+CAjSKH8hOAMoENj/99T/KYpqisvnHUgBcDAAF0v/9wv/HEjhiUGAGkv/9wX/AL0AtQtIQSENS//3
+/v7ggRihACKLWgIyACsB0INC+dFSCDcxiFwAvWD/AwKAIwADbZ0FCIBCAgJ0cAMCNG4DApEzBAjV
+HwYISXQGCNl0BgjJLgYIWRwGCJwQAAOoDwADREMAA3HSBgiQ/gMCWqEAAAAAxQIZACMAJwAoADQA
 NgBPAFAAVgBCAEMAPgBkABAAEgAVABYAVABoAHEAcwCDAIwAHQAgACEAAADARnhxc4N9eYCBfoKG
 cH90cm6FhG91d4eTent8AAA=`), {
                 'BPGE 1.10': decodeBase64(`XAEBRw==`),
