@@ -448,6 +448,7 @@ void ldn_session_stop(void)
     memset(s_target_bssid, 0, sizeof(s_target_bssid));
     ldn_control_target(s_target_bssid);
     esp_wifi_start();
+    bridge_wifi_tx_power();
     esp_wifi_set_ps(WIFI_PS_NONE);
     enable_management_sniffer();
     portENTER_CRITICAL(&s_stats_lock);
@@ -476,7 +477,7 @@ esp_err_t ldn_session_configure(const char *ssid, const char *bssid, const char 
     esp_fill_random(s_station_mac, 6); s_station_mac[0] = (s_station_mac[0] & 0xfc) | 2;
     esp_err_t result = esp_wifi_set_mac(WIFI_IF_STA, s_station_mac);
     if (result != ESP_OK) return result;
-    esp_wifi_start(); esp_wifi_set_ps(WIFI_PS_NONE); enable_management_sniffer();
+    esp_wifi_start(); bridge_wifi_tx_power(); esp_wifi_set_ps(WIFI_PS_NONE); enable_management_sniffer();
     ldn_control_target(s_target_bssid);
 
     wifi_config_t config = {0};
@@ -538,6 +539,13 @@ static void run_private_join(void)
 __attribute__((weak)) void bridge_board_init(void) {}
 __attribute__((weak)) bool bridge_board_antenna(bool external) { (void)external; return false; }
 
+void bridge_wifi_tx_power(void)
+{
+#if CONFIG_BRIDGE_WIFI_MAX_TX_POWER
+    esp_wifi_set_max_tx_power(CONFIG_BRIDGE_WIFI_MAX_TX_POWER);
+#endif
+}
+
 void app_main(void)
 {
     bridge_board_init();
@@ -580,6 +588,7 @@ void app_main(void)
 #endif
     install_wpa_hook();
     ESP_ERROR_CHECK(esp_wifi_start());
+    bridge_wifi_tx_power();
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     enable_management_sniffer();
 

@@ -13,3 +13,5 @@ int8_t ldn_probe_last_rssi(void);
 void ldn_probe_rssi_window(int *count, int *average, int *low, int *high);
 /* External (true) or onboard antenna. Returns false if the board has no switch. */
 bool bridge_board_antenna(bool external);
+/* Applies CONFIG_BRIDGE_WIFI_MAX_TX_POWER; the driver forgets it on every esp_wifi_start. */
+void bridge_wifi_tx_power(void);

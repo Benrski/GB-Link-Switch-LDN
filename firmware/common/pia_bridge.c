@@ -287,13 +287,15 @@ static void text_of_uname(const uint8_t *uname, char *out, size_t cap)
    version 10-13), trainer id 4, partner info 6-9, trade species 10 (10 bits) and type
    (6 bits), activity 12 (bit 7 started), gender and trade level 13; name at 16.
    Room record (the Switch's): trainer id 0, name 2, adapter id 10, partner info 12-15,
-   word 16 (activity 0-6, can link nationally 7, version 8-10, language 11-13, has card 14,
-   started 15), 18 (national dex 0, game clear 1, trade type 2-7), gender and trade level
-   19, trade species 22. Bits 0-1 of byte 18 are set in a finished game's room and clear
-   in a new one's. */
+   word 16 (activity 0-6, bit 7, version 8-10, language 11-13, has card 14, started 15),
+   18 (progress 0-1, trade type 2-7), gender and trade level 19, trade species 22.
+   The progress bits are both set in a finished game's room and both clear in the rooms
+   of games without the National Dex, so both set stands for "can link nationally". Bit 7
+   of word 16 is not that flag: it is set in rooms whose progress bits are clear. */
 static void record_of_beacon(uint8_t *rec, const uint8_t *beacon, uint16_t adapter_id, bool started)
 {
     const uint16_t compat = bin_u16(beacon + 2);
+    const uint8_t nationally = (compat & 0x80) ? 3 : 0;
     memset(rec, 0, APP_RECORD);
     memcpy(rec, beacon + 4, 2);
     memcpy(rec + 2, beacon + 16, 8);
@@ -301,7 +303,7 @@ static void record_of_beacon(uint8_t *rec, const uint8_t *beacon, uint16_t adapt
     memcpy(rec + 12, beacon + 6, 4);
     bin_w16(rec + 16, (uint16_t)((beacon[12] & 0x7f) | (compat & 0x80) | ((compat >> 10) & 7) << 8 |
                                  (compat & 7) << 11 | (compat & 0x20) << 9 | (started ? 0x8000 : 0)));
-    rec[18] = (uint8_t)((beacon[11] & 0xfc) | ((compat >> 8) & 3));
+    rec[18] = (uint8_t)((beacon[11] & 0xfc) | ((compat >> 8) & 3) | nationally);
     rec[19] = beacon[13];
     bin_w16(rec + 22, bin_u16(beacon + 10) & 0x3ff);
 }
@@ -309,7 +311,8 @@ static void record_of_beacon(uint8_t *rec, const uint8_t *beacon, uint16_t adapt
 static void beacon_of_record(uint8_t *beacon, const uint8_t *rec)
 {
     const uint16_t word = bin_u16(rec + 16);
-    bin_w16(beacon + 2, (uint16_t)(((word >> 11) & 7) | ((word >> 9) & 0x20) | (word & 0x80) |
+    const uint16_t nationally = (rec[18] & 3) == 3 ? 0x80 : 0;
+    bin_w16(beacon + 2, (uint16_t)(((word >> 11) & 7) | ((word >> 9) & 0x20) | nationally |
                                    (rec[18] & 3) << 8 | ((word >> 8) & 7) << 10));
     memcpy(beacon + 4, rec, 2);
     memcpy(beacon + 6, rec + 12, 4);

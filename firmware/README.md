@@ -10,8 +10,7 @@ need this page.
 
 ## Boards
 
-One source tree (`common/`) builds for four chips. The original ESP32 and the ESP32-S3
-are the recommended ones.
+One source tree (`common/`) builds for four chips. The ESP32-S3 is the recommended one.
 
 | Folder | Console | TX, to GB-Link GP9 | RX, to GB-Link GP8 |
 | --- | --- | --- | --- |
@@ -24,8 +23,8 @@ Connect ground to ground as well. If the link stays silent, the two data wires a
 probably swapped: `LDN_PICO_SWAP` swaps them in software until the next restart.
 
 Tested boards: Seeed Studio XIAO ESP32-S3 (attach its antenna), ESP32-S3-N16R8,
-M5Stack AtomS3, Seeed Studio XIAO ESP32-C6 and a DOIT ESP32 DEVKIT V1. On the XIAO
-ESP32-C6, `LDN_ANTENNA 0|1` picks the onboard or external antenna.
+M5Stack AtomS3, Seeed Studio XIAO ESP32-C6, a DOIT ESP32 DEVKIT V1 and an ESP32-C3
+board. On the XIAO ESP32-C6, `LDN_ANTENNA 0|1` picks the onboard or external antenna.
 
 ## Building
 
@@ -106,10 +105,12 @@ top of each file.
   firmware, and if it still happens, try another cable.
 - **The GBA says the trainer is busy, or waits forever.** Close the room on the Switch
   and open it again.
-- **Emerald says the other trainer is not ready yet.** Emerald trades with FireRed or
-  LeafGreen only once that game has finished the Sevii Islands story (Cerulean Cave
-  shows on its town map). The same happens between two GBAs. The web client says so
-  while it waits for the GBA.
+- **Emerald says the other trainer is not ready yet, or a game says it can't transmit
+  with a trainer who is too far away.** Emerald and FireRed or LeafGreen trade only once
+  both players have entered the Hall of Fame and the FireRed or LeafGreen player has
+  finished the Sevii Islands story (Cerulean Cave shows on its town map). The same
+  happens between two GBAs. When the web page carries the link, turning on its National
+  Dex bypass lets them trade anyway.
 - **The GBA never sees the Switch.** Check the keys (`LDN_KEYS`), the antenna, and that
   both consoles picked the same activity.
 - **Choppy walking.** Move the board closer to the Switch.

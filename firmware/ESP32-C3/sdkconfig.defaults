@@ -30,3 +30,5 @@ CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n
 CONFIG_LWIP_IPV6=n
 CONFIG_BRIDGE_USB_RX_BUFFER=8192
 CONFIG_BRIDGE_USB_TX_BUFFER=4096
+# 8.5 dBm: some C3 boards garble their frames at full power and never get a join answered.
+CONFIG_BRIDGE_WIFI_MAX_TX_POWER=34

@@ -157,7 +157,7 @@
             <p class="fine" id="game-note-cable" hidden>Ruby and Sapphire have no wireless. This page links them by cable and turns that link into the Switch's wireless, so both boards stay on USB. Trades and single or double battles, with the Switch leading.</p>
             <div id="bypass-panel" hidden>
                 <label class="fine check"><input type="checkbox" id="bypass-nationally"> Bypass the National Dex requirement</label>
-                <p class="fine warn" id="bypass-warning" hidden>Pokémon from Ruby, Sapphire or Emerald may not be tradable out of the Switch's game until it has the National Dex and has finished the Sevii Islands story (Cerulean Cave shows on its town map). Only while this page carries the link, not with the boards wired. FireRed and LeafGreen need no bypass: leave it off for them.</p>
+                <p class="fine warn" id="bypass-warning" hidden>Trades go ahead whatever either game's progress. Pokémon from Ruby, Sapphire or Emerald may not be tradable out of the Switch's game until it has the National Dex and has finished the Sevii Islands story (Cerulean Cave shows on its town map). Only while this page carries the link, not with the boards wired. FireRed and LeafGreen need no bypass: leave it off for them.</p>
             </div>
 
             <div class="session" id="session" hidden>
@@ -338,7 +338,7 @@
             <details class="more">
                 <summary>Options: National Dex bypass, Celio server</summary>
                 <label class="fine check"><input type="checkbox" id="celio-bypass"> Bypass the National Dex requirement</label>
-                <p class="fine warn" id="celio-bypass-warning" hidden>Pokémon from Ruby, Sapphire or Emerald may not be tradable out of the Switch's game until it has the National Dex and has finished the Sevii Islands story (Cerulean Cave shows on its town map).</p>
+                <p class="fine warn" id="celio-bypass-warning" hidden>Trades go ahead whatever either game's progress. Pokémon from Ruby, Sapphire or Emerald may not be tradable out of the Switch's game until it has the National Dex and has finished the Sevii Islands story (Cerulean Cave shows on its town map).</p>
                 <p class="fine"><label for="celio-server">Celio server</label> <input type="text" id="celio-server" spellcheck="false" autocomplete="off"> <button class="quiet" id="celio-server-reset" hidden>Back to the usual one</button></p>
             </details>
         </section>
@@ -354,7 +354,17 @@
             </div>
 
             <p class="gift-pick"><label for="gift-event">Wonder Card</label> <select id="gift-event"></select></p>
-            <p class="fine" id="gift-description"></p>
+            <p class="fine" id="gift-description" data-base="fine"></p>
+
+            <details class="more" id="gift-own">
+                <summary>Your own Wonder Card (.wc3 file)</summary>
+                <label class="drop" id="gift-drop">
+                    <input type="file" id="gift-file" accept=".wc3">
+                    <strong>Drop a <code>.wc3</code> file on this card</strong>
+                    <span>or click to choose one</span>
+                </label>
+            </details>
+            <p class="status" id="gift-file-note" aria-live="polite"></p>
 
             <div class="session" id="gift-session" hidden>
                 <p class="headline" id="gift-headline">–</p>

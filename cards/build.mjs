@@ -68,10 +68,8 @@ const FADE_TO_BLACK = 1;
 const FADE_FROM_WHITE = 2;
 const FADE_TO_WHITE = 3;
 // The state of the V-blank hooks (shiny.s, roamer.s, fly.s, tm.s, split.s),
-// first byte 1 while on; the shiny hook keeps at SHINY_NAME the name of the
-// Pokémon met in a row.
+// first byte 1 while on.
 const HOOK_STATE = 0x0203ff60;
-const SHINY_NAME = HOOK_STATE + 12;
 
 // first..last, both included.
 const range = (first, last) => Array.from({ length: last - first + 1 }, (_, i) => first + i);
@@ -101,11 +99,14 @@ const FAMILIES = {
   },
 };
 
+// The Switch's ROMs are English: the cards' sources take these for every one.
+const LANGUAGE_SYMBOLS = { JAPANESE: 0, GAME_LANGUAGE: 2 };
+
 // A card's view of one ROM: its family's constants and the ROM's addresses.
 function gameOf(romId) {
   const rom = ROMS[romId];
   const family = FAMILIES[rom.family];
-  return { ...family, ...rom, id: romId, symbols: { ...rom.symbols, ...family.symbols } };
+  return { ...family, ...rom, id: romId, symbols: { ...rom.symbols, ...family.symbols, ...LANGUAGE_SYMBOLS } };
 }
 
 // The ROM header must name exactly this ROM: game letter, English, revision.
@@ -630,38 +631,23 @@ const CARDS = [
       flagId: 1022, idNumber: 22, iconSpecies: 130, bgType: 0,
       title: 'SHINY HUNTING',
       subtitle: 'Shiny POKéMON, more often',
-      body: ['Meet shiny POKéMON more often,', 'more still in a row. Visit the', 'deliveryman on the 2nd floor', 'of a POKéMON CENTER.'],
+      body: ['Catch or defeat one POKéMON', 'again and again to meet it', 'shiny. Visit the deliveryman', 'on 2F of a POKéMON CENTER.'],
       footer: FOOTER,
     },
-    // `report` puts the chain in VAR_0x8005 and the next odds in VAR_0x8006.
+    // R in the field shows the chain (r_script).
+    data: {
+      chain_text: '{STR_VAR_1} chain: {STR_VAR_2}!',
+    },
+    // The first talk turns it on, until the game is reset; talking again says so.
     script: {
       body: [
         ...compareAddrToValue(HOOK_STATE, 1), ...vgotoIf(EQ, 'active'),
-        ...vmessage('ask_text'), ...waitmessage(), ...yesnobox(),
-        ...compareVarToValue(VAR_RESULT, 0), ...vgotoIf(EQ, 'declined'),
         ...native('install'),
-        ...say('on_text'),
         { define: 'active' },
-        ...native('report'),
-        ...buffernumberstring(1, VAR_0x8006),
-        ...compareVarToValue(VAR_0x8005, 0), ...vgotoIf(EQ, 'keep'),
-        ...bufferstring(0, SHINY_NAME), ...buffernumberstring(2, VAR_0x8005),
-        ...vmessage('chain_text'), ...waitmessage(), ...waitbuttonpress(),
-        { define: 'keep' },
-        ...vmessage('keep_text'), ...waitmessage(), ...yesnobox(),
-        ...compareVarToValue(VAR_RESULT, 1), ...vgotoIf(EQ, 'declined'),
-        ...writebytetoaddr(0, HOOK_STATE),
-        ...say('off_text'),
-        { define: 'declined' },
-        ...say('declined_text'),
+        ...say('on_text'),
       ],
       texts: {
-        ask_text: 'Want shiny POKéMON more often?',
-        on_text: 'Done! Same POKéMON in a row,\nbetter odds!',
-        chain_text: '{STR_VAR_1} in a row: {STR_VAR_3}!',
-        keep_text: 'Shiny odds: 1 in {STR_VAR_2}.\nKeep hunting?',
-        off_text: 'Shiny hunting is off.',
-        declined_text: 'Come back any time!',
+        on_text: 'On until you reset!\nR shows your chain.',
       },
     },
   },

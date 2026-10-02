@@ -16,7 +16,9 @@ Pick one at the top of the page, or open `#gba`, `#switch`, `#celio` or `#gift` 
 3. **Play:** wire the boards together, or leave both on USB and let the page pass the
    traffic between them. For Ruby and Sapphire, pick them here: the page links the game
    by cable (the adapter's mode `0x01`) and translates that link into the Switch's
-   wireless, so both boards must be on USB.
+   wireless, so both boards must be on USB. For Emerald and Ruby/Sapphire the page's
+   National Dex bypass, when turned on, lets trades go ahead whatever either game's
+   progress.
 
 **PC to Switch** (ESP32 board only)
 
@@ -31,9 +33,10 @@ its player picked, so the page waits for you to choose or press *Accept trade*.
 **Mystery Gift** (ESP32 board only)
 
 1. **ESP32 board:** the same as above, with firmware 2.1.0 or later.
-2. **Mystery Gift:** pick a Wonder Card and press *Start*. The page leads a group as a
-   FireRed sharing a card; on the Switch, MYSTERY GIFT, WONDER CARDS, FRIEND, then GBLINK.
-   The card for the next Switch can change while the group is open.
+2. **Mystery Gift:** pick a Wonder Card, or drop a `.wc3` file of your own on the card,
+   and press *Start*. The page leads a group as a FireRed sharing a card; on the Switch,
+   MYSTERY GIFT, WONDER CARDS, FRIEND, then GBLINK. The card for the next Switch can
+   change while the group is open.
 
 A Switch that already has the card is sent it again only if you say so on the page. The
 group stays open for one Switch after another; after a link the page had to end itself,
@@ -91,7 +94,7 @@ firmware/tools/package_web.py
 | `js/keys.js` | reading `prod.keys` |
 | `js/trade/` | trading without a GBA |
 | `js/cable/` | Ruby and Sapphire: the adapter's cable mode and the translation to the Switch's wireless (`translator.js` is MPL-2.0, ported from [mgba_LDN](https://github.com/Gr3nSkyDragon/mgba_LDN)) |
-| `js/gift/` | Mystery Gift: the group the Switch joins as a friend, the gift exchange (from [gblink-wondercards](https://github.com/GB-Link/gblink-wondercards)) and the cards; `team.js` is written by `cards/build.mjs` |
+| `js/gift/` | Mystery Gift: the group the Switch joins as a friend, the gift exchange (from [gblink-wondercards](https://github.com/GB-Link/gblink-wondercards)) and the cards; `team.js` is written by `cards/build.mjs`, `wc3.js` reads `.wc3` files |
 
 ## Tests
 

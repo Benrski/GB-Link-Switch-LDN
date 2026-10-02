@@ -143,6 +143,7 @@ button.quiet { background: none; font-weight: 500; color: var(--muted); padding:
 .drop strong { color: var(--text); }
 .drop.over, .drop:hover, .drop:focus-within { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .drop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.more .drop { padding: 12px 16px; }
 
 .fine { color: var(--muted); font-size: 0.86rem; margin: 12px 0 0; }
 .fine.warn { color: var(--warn); }

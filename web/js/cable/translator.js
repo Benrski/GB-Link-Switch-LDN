@@ -33,6 +33,8 @@ const LP_TRAINER_ID_OFFSET = 16 + 4;
 const LP_NAME_OFFSET = 16 + 8;
 const LP_PROGRESS_OFFSET = 16 + 0x10;   // FRLG: progressFlags, neverRead, progressFlagsCopy
 const PROGRESS_CLEARED = 0x11;          // National Dex (0x0F) and a cleared game (0xF0)
+// Emerald: its player is Champion. FireRed/LeafGreen: the Sevii Islands story is done.
+const PROGRESS_LINK_HOENN = 0x10;
 const VERSION_EMERALD = 3;
 // RfuGameData compatibility: can link nationally (bit 7), National Dex, game clear, version.
 const COMPAT_CAN_LINK_NATIONALLY = 1 << 7;
@@ -84,20 +86,6 @@ const MAGIC = Array.from('GameFreak inc.', (c) => c.charCodeAt(0));
 function fragCount(bytes) { return Math.max(1, Math.ceil(bytes / FRAG_BYTES)); }
 
 // Block sizes by fragment count; the counts the cable club and trade menu use are unique.
-// A trainer card for a player, from their LinkPlayer: gender, trainer id and name, the fields
-// of the first 0x38 bytes every Gen 3 game reads from a partner's card.
-export function cardFromLinkPlayer(lp) {
-    const out = new Uint8Array(CARD_SIZE);
-    out[0x00] = lp[16 + 0x13];
-    out[0x02] = 1;
-    out[0x0e] = lp[LP_TRAINER_ID_OFFSET];
-    out[0x0f] = lp[LP_TRAINER_ID_OFFSET + 1];
-    let i = 0;
-    for (; i < 7 && lp[LP_NAME_OFFSET + i] !== 0xff; i++) out[0x30 + i] = lp[LP_NAME_OFFSET + i];
-    out[0x30 + i] = 0xff;
-    return out;
-}
-
 export function sizeFromCount(count) {
     switch (count) {
         case 17: return 200;
@@ -385,7 +373,6 @@ export class CableTranslator {
         this.cardAt = 0;
         this.cardRequested = false;
         this.haveRubyCard = false;
-        this.cardSynth = false;
         this.cardQueued = false;
         this.cardPullWaiting = false;
         this.cardSendDone = false;
@@ -494,9 +481,18 @@ export class CableTranslator {
         if (!this.haveHostLP || !this.sessionRubyLP || this.p0LPDelivered) return;
         const block = this.hostLP.slice();
         block.set(this.rubyLP.subarray(LP_LINK_TYPE_OFFSET, LP_LINK_TYPE_OFFSET + 4), LP_LINK_TYPE_OFFSET);
-        // Emerald's cable club checks a FireRed/LeafGreen partner's progress; with the bypass
-        // on, the Switch player reaches it as another Emerald, which it does not check.
-        if (this.bypassNationally && this.gameVersion === VERSION_EMERALD) put16(block, LP_VERSION_OFFSET, 0x4000 | VERSION_EMERALD);
+        // Emerald's cable club trades with a FireRed/LeafGreen player only when its own is
+        // Champion and the other has finished the Sevii Islands story. With the bypass on, a
+        // Champion's game gets the Switch player with that progress; any other gets the Switch
+        // player as another Emerald, which it does not check (and draws as one).
+        if (this.bypassNationally && this.gameVersion === VERSION_EMERALD) {
+            if (this.rubyLP[LP_PROGRESS_OFFSET] & PROGRESS_LINK_HOENN) {
+                block[LP_PROGRESS_OFFSET] = PROGRESS_CLEARED;
+                block[LP_PROGRESS_OFFSET + 2] = PROGRESS_CLEARED;
+            } else {
+                put16(block, LP_VERSION_OFFSET, 0x4000 | VERSION_EMERALD);
+            }
+        }
         // In the Colosseum the id is the spot each player stands on; there are two.
         if (this.battle) block[LP_ID_OFFSET] = this.rubyLP[LP_ID_OFFSET] ^ 1;
         this.cablePushBlock(block, block.length);
@@ -562,23 +558,19 @@ export class CableTranslator {
         this.held = [];
     }
 
-    // A trainer card made from the leader's LinkPlayer, so the game can leave its "awaiting
-    // link-up" screen while the leader is still entering the room.
-    buildHostCard() { return cardFromLinkPlayer(this.hostLP); }
-
+    // The game's card is asked for right after the LinkPlayers, ready for the leader's pull.
+    // The game leaves its "awaiting link-up" screen once the leader's own card follows, which
+    // the leader sends only after walking into its room.
     requestEarlyCard() {
         if (this.expect !== EXPECT.NONE) {
             this.cardArmed = true;
             this.cardAt = this.cablePackets + 10;
             return;
         }
-        const card = this.buildHostCard();
         this.cardRequested = true;
-        this.cardSynth = true;
         this.expect = EXPECT.CARD;
         this.cablePushCmd(LINKCMD.SEND_BLOCK_REQ, 2, 0);
-        this.cablePushBlock(card, CARD_SIZE);
-        this.log('trainer cards exchanged with the game now (the leader\'s own card is dropped when it arrives)');
+        this.log('the game\'s trainer card asked for; the leader\'s goes to it when it arrives');
     }
 
     queueCard() {
@@ -633,11 +625,6 @@ export class CableTranslator {
             // Battle data, relayed as is.
         } else if (count === 9) {
             // Trainer card: the first 0x38 bytes are the same in every Gen 3 game.
-            if (this.cardSynth) {
-                this.log('leader\'s trainer card received: not needed, the game already has one');
-                this.cardSynth = false;
-                return;
-            }
             this.log('leader\'s trainer card received');
         } else if (count === 2) {
             const command = le16(data, 0);
@@ -1031,7 +1018,6 @@ export class CableTranslator {
         this.cardArmed = false;
         this.cardRequested = false;
         this.haveRubyCard = false;
-        this.cardSynth = false;
         this.cardQueued = false;
         this.cardPullWaiting = false;
         this.cardSendDone = false;

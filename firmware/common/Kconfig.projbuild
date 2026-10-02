@@ -37,4 +37,12 @@ config BRIDGE_USB_RX_BUFFER
 config BRIDGE_USB_TX_BUFFER
     int "USB console send buffer, in bytes"
     default 8192
+config BRIDGE_WIFI_MAX_TX_POWER
+    int "Wi-Fi transmit power cap, in 0.25 dBm steps (0: the chip's own maximum)"
+    range 0 84
+    default 0
+    help
+        Some ESP32-C3 boards (the C3 SuperMini among them) send garbled frames at full
+        power: they hear the Switch's room but their join is never answered. The Switch
+        sits within a metre or two, so a low cap costs nothing.
 endmenu

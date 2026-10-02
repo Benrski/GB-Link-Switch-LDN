@@ -82,13 +82,15 @@ const state = {
 
     resetLoop: false,       // adapter reports repeated resets by the game
     game: 'wireless',       // the GBA's game: wireless (FRLG, Emerald) | cable (Ruby, Sapphire)
-    bypassNationally: false,   // Ruby and Sapphire join even if the Switch's game is not far enough
+    bypassNationally: false,   // skip the Kanto/Hoenn progress checks; not remembered, off on every visit
     bridge: null,           // Bridge, or CableSession for Ruby and Sapphire
     celio: null,            // CelioSession: in a Celio session, linking once started
     celioNote: null,        // { text, tone }
     celioServer: CELIO_SERVER,
     gift: null,             // GiftDistribution while the page's Mystery Gift group is open
     giftEvent: null,        // id of the chosen event
+    giftFile: null,         // the event of a .wc3 opened on the page
+    giftFileNote: null,     // why the last .wc3 could not be opened
     giftStatus: null,       // the link now: { stage, event, player, detail, result }
     giftDecision: null,     // the question the Switch waits on, or null
     giftResult: null,       // the last delivery, shown until the next Switch joins
@@ -617,7 +619,7 @@ function renderSession() {
         } else if (status.conn_state === '2') {
             headline = 'In the Switch’s room. Waiting for the Game Boy Advance.';
             hint = 'On the GBA, choose the same activity and join the group.';
-            if (status.national === '0' && !state.bypassNationally) hint += ' Emerald cannot trade with this game yet: the Switch player has to finish the Sevii Islands story first (Cerulean Cave shows on the town map once it is done). Until then Emerald says the other trainer is not ready. FireRed and LeafGreen can trade now, and battles work with any game.';
+            if (status.national === '0' && !state.bypassNationally) hint += ' Emerald cannot trade with this game yet: the Switch player has to finish the Sevii Islands story first (Cerulean Cave shows on the town map once it is done). Until then Emerald says the other trainer is not ready; the National Dex bypass above lets it trade anyway. FireRed and LeafGreen can trade now, and battles work with any game.';
             tone = 'good';
         } else {
             headline = 'In the Switch’s room, setting up the session…';
@@ -1076,7 +1078,6 @@ function choosePath(path, { keep = true } = {}) {
 }
 
 const GAME_STORE = 'gblink-switch-game';
-const BYPASS_STORE = 'gblink-switch-bypass-nationally';
 const GAMES = ['wireless', 'cable'];
 
 function chooseGame(game) {
@@ -1089,7 +1090,6 @@ function chooseGame(game) {
 
 function setBypass(value) {
     state.bypassNationally = value;
-    remember(BYPASS_STORE, value ? '1' : null);
     state.bridge?.setBypass(value);
     state.celio?.setBypass(value);
     render();
@@ -1273,13 +1273,13 @@ function renderCelio() {
 const GIFT_STORE = 'gblink-switch-gift';
 // The board leads groups from firmware 2.1.0 on.
 const GIFT_FIRMWARE = '2.1.0';
-let gift = null;            // the gift modules (events, distribution), loaded with the tab
+let gift = null;            // the gift modules (events, distribution, .wc3 files), loaded with the tab
 let giftLoading = null;
 
 function loadGift() {
-    giftLoading ??= Promise.all([import('./gift/events.js'), import('./gift/distribution.js'), import('./gift/mystery-gift.js')]).then(
-        ([events, distribution, link]) => {
-            gift = { ...events, ...distribution, describeGameCode: link.describeGameCode };
+    giftLoading ??= Promise.all([import('./gift/events.js'), import('./gift/distribution.js'), import('./gift/mystery-gift.js'), import('./gift/wc3.js')]).then(
+        ([events, distribution, link, wc3]) => {
+            gift = { ...events, ...distribution, ...wc3, describeGameCode: link.describeGameCode };
             const select = $('gift-event');
             select.replaceChildren(...gift.EVENT_GROUPS.map((group) => {
                 const list = document.createElement('optgroup');
@@ -1298,13 +1298,48 @@ function loadGift() {
     );
 }
 
+function giftEventById(id) {
+    return id === state.giftFile?.id ? state.giftFile : gift?.findEvent(id);
+}
+
 function chooseGiftEvent(id) {
-    const event = gift?.findEvent(id);
+    const event = giftEventById(id);
     if (!event) return;
     state.giftEvent = id;
-    remember(GIFT_STORE, id);
+    state.giftFileNote = null;
+    if (event !== state.giftFile) remember(GIFT_STORE, id);
     state.gift?.setEvent(event);
     renderGift();
+}
+
+// A .wc3 opened or dropped on the card: listed under its own group and chosen.
+async function onGiftFile(file) {
+    if (!file) return;
+    loadGift();
+    await giftLoading;
+    if (!gift) return;
+    let event;
+    try {
+        event = gift.wc3Event(new Uint8Array(await file.arrayBuffer()), file.name);
+    } catch (error) {
+        state.giftFileNote = error instanceof gift.Wc3Error ? error.message : `${file.name} could not be read.`;
+        log('gift', `${file.name}: ${state.giftFileNote}`);
+        renderGift();
+        return;
+    }
+    state.giftFile = event;
+    const select = $('gift-event');
+    let group = select.querySelector('optgroup[data-file]');
+    if (!group) {
+        group = document.createElement('optgroup');
+        group.label = 'Your .wc3 file';
+        group.dataset.file = '';
+        select.append(group);
+    }
+    group.replaceChildren(new Option(event.label, event.id));
+    select.value = event.id;
+    log('gift', `opened ${file.name}`);
+    chooseGiftEvent(event.id);
 }
 
 // Why the group cannot open, or null.
@@ -1321,7 +1356,7 @@ function giftBlocker() {
 }
 
 async function giftStart() {
-    const event = gift?.findEvent(state.giftEvent);
+    const event = giftEventById(state.giftEvent);
     if (state.gift || !event || giftBlocker()) return;
     const distribution = new gift.GiftDistribution(state.esp);
     distribution.addEventListener('log', (e) => log('gift', e.detail));
@@ -1433,8 +1468,9 @@ function giftView() {
 function renderGift() {
     if (state.path === 'gift') loadGift();
     const running = Boolean(state.gift);
-    const event = gift?.findEvent(state.giftEvent);
-    $('gift-description').textContent = event?.description ?? '';
+    const event = giftEventById(state.giftEvent);
+    setLine('gift-description', event?.description ?? '', event?.emerald ? 'warn' : '');
+    setLine('gift-file-note', state.giftFileNote ?? '', 'bad');
     const blocker = giftBlocker();
     $('gift-start').hidden = running;
     $('gift-start').disabled = Boolean(blocker) || !event;
@@ -2070,6 +2106,15 @@ function wireUp() {
     });
     $('celio-server-reset').addEventListener('click', () => { state.celioServer = CELIO_SERVER; remember(CELIO_STORE, null); renderCelio(); });
     $('gift-event').addEventListener('change', (event) => chooseGiftEvent(event.target.value));
+    $('gift-file').addEventListener('change', (event) => {
+        onGiftFile(event.target.files[0]);
+        event.target.value = '';
+    });
+    // A .wc3 can be dropped anywhere on the card, its own section folded or not.
+    const giftCard = $('gift-card'), giftDrop = $('gift-drop');
+    for (const name of ['dragenter', 'dragover']) giftCard.addEventListener(name, (event) => { event.preventDefault(); giftDrop.classList.add('over'); });
+    for (const name of ['dragleave', 'drop']) giftCard.addEventListener(name, (event) => { event.preventDefault(); giftDrop.classList.remove('over'); });
+    giftCard.addEventListener('drop', (event) => onGiftFile(event.dataTransfer?.files?.[0]));
     $('gift-start').addEventListener('click', giftStart);
     $('gift-stop').addEventListener('click', () => giftStop());
     $('gift-again').addEventListener('click', () => giftDecide(true));
@@ -2112,7 +2157,6 @@ async function start() {
     state.path = PATHS.includes(asked) ? asked : PATHS.includes(remembered(PATH_STORE)) ? remembered(PATH_STORE) : 'gba';
     state.source = remembered(SOURCE_STORE) === 'party' ? 'party' : 'pool';
     state.game = remembered(GAME_STORE) === 'cable' ? 'cable' : 'wireless';
-    state.bypassNationally = remembered(BYPASS_STORE) === '1';
     state.celioServer = remembered(CELIO_STORE) ?? CELIO_SERVER;
     state.giftEvent = remembered(GIFT_STORE);
     state.poolServer = remembered(SERVER_STORE) || POOL_SERVER;

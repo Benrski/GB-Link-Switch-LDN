@@ -10,7 +10,7 @@
 // where the parent has opened a new link. This side sends its own as the Switch gets there
 // and answers the Switch once the parent's has come.
 
-import { CMD_WORDS, KeyRuns, KeyQueue, LINKCMD, cardFromLinkPlayer, sizeFromCount, sizeFromRequest } from './translator.js';
+import { CMD_WORDS, KeyRuns, KeyQueue, LINKCMD, sizeFromCount, sizeFromRequest } from './translator.js';
 import { leaderBeacon } from './leader.js';
 import { StepFollower } from './steps.js';
 
@@ -41,8 +41,6 @@ const PROGRESS_CLEARED = 0x11;
 // LeafGreen once the Sevii Islands story allows linking with Hoenn. Emerald's cable club
 // refuses a FireRed/LeafGreen partner unless both are set.
 const PROGRESS_LINK_HOENN = 0x10;
-const REQUEST_CARD = 2;
-const CARD_SIZE = 100;
 // A GBA parent sends its LinkPlayer with its 0x2222; a parent that waits for ours first
 // (this page as the parent, for another Switch) gets it after this many cable packets.
 const LP_WAIT_PACKETS = 20;
@@ -53,7 +51,6 @@ const LP_WAIT_PACKETS = 20;
 const REQUEST_GAP_FRAMES = 15;
 const REREQUEST_FRAMES = 60;
 const REREQUESTS = 3;
-const VERSION_FIRERED = 4;
 const KEY_EMPTY = 0x11;
 const KEY_RATE_WINDOW = 40;
 const MAGIC = Array.from('GameFreak inc.', (c) => c.charCodeAt(0));
@@ -92,7 +89,6 @@ export class ReverseTranslator {
         this.parentSeen = null;      // the other GBA's latest LinkPlayer, refused or not
         this.lpPending = false;      // this side's LinkPlayer waits for the other GBA's
         this.lpWait = 0;
-        this.cardGiven = false;      // the other GBA got a card made from the Switch's player
         this.switchBlockAt = -Infinity;  // leader frame of the Switch's last whole block
         this.requestAt = 0;          // leader frame the request in this.pull went out, 0 not yet
         this.rerequests = 0;
@@ -212,10 +208,9 @@ export class ReverseTranslator {
         if (this.pull !== null && this.cableRequest === this.pull) {
             const size = sizeFromRequest(this.pull);
             this.log(`the Switch answered request ${this.pull}`);
-            const given = this.pull === REQUEST_CARD && this.cardGiven;
             this.pull = null;
             this.cableRequest = null;
-            if (!given) this.cablePushBlock(data.subarray(0, size), size);
+            this.cablePushBlock(data.subarray(0, size), size);
             return;
         }
         const size = this.inBattle ? count * 12 : sizeFromCount(count);
@@ -236,13 +231,11 @@ export class ReverseTranslator {
 
     // The other GBA as the Switch sees it: Ruby and Sapphire as an Emerald that has
     // finished the game (FireRed checks nothing more for Emerald), the others as they are.
-    // With the bypass on, a Hoenn game in a trade shows as FireRed, which the Switch's game
-    // trades with without its Sevii Islands check.
+    // Over wireless the Switch's game checks no Sevii Islands progress, so the bypass
+    // changes nothing here.
     forSwitch(lp) {
         const out = lp.slice(0, LP_SIZE);
-        if (this.bypassNationally && !this.battle && out[LP_VERSION] >= 1 && out[LP_VERSION] <= VERSION_EMERALD) {
-            put16(out, LP_VERSION, 0x4000 | VERSION_FIRERED);
-        } else if (out[LP_VERSION] === 1 || out[LP_VERSION] === 2) {
+        if (out[LP_VERSION] === 1 || out[LP_VERSION] === 2) {
             put16(out, LP_VERSION, 0x4000 | VERSION_EMERALD);
             out[LP_PROGRESS] = PROGRESS_CLEARED;
             out[LP_PROGRESS + 1] = 0;
@@ -260,9 +253,17 @@ export class ReverseTranslator {
         // In the Colosseum the id is the spot each player stands on.
         if (this.linkType === LINKTYPE.BATTLE && this.switchBattleLP) out[LP_ID] = this.switchBattleLP[0x18];
         else if (this.battle) out[LP_ID] = this.parentSeen ? this.parentSeen[LP_ID] ^ 1 : 1;
-        // With the bypass on, an Emerald parent sees another Emerald, whose trades it does
-        // not check.
-        if (this.bypassNationally && !this.battle && this.parentSeen?.[LP_VERSION] === VERSION_EMERALD) put16(out, LP_VERSION, 0x4000 | VERSION_EMERALD);
+        // With the bypass on, an Emerald parent whose player is Champion gets the Switch
+        // player with the Sevii Islands story done; any other gets the Switch player as another
+        // Emerald, whose trades it does not check (and draws as one).
+        if (this.bypassNationally && !this.battle && this.parentSeen?.[LP_VERSION] === VERSION_EMERALD) {
+            if (this.parentSeen[LP_PROGRESS] & PROGRESS_LINK_HOENN) {
+                out[LP_PROGRESS] = PROGRESS_CLEARED;
+                out[LP_PROGRESS + 2] = PROGRESS_CLEARED;
+            } else {
+                put16(out, LP_VERSION, 0x4000 | VERSION_EMERALD);
+            }
+        }
         return out;
     }
 
@@ -523,17 +524,10 @@ export class ReverseTranslator {
                 }
                 break;
             case LINKCMD.SEND_BLOCK_REQ:
-                if (!this.s1Done && words[1] === REQUEST_CARD && !this.cardGiven) {
-                    // The other GBA finishes its link-up ("Please enter") only with a card,
-                    // while the Switch hands over its own after walking to its room: the GBA
-                    // gets one made from the Switch's LinkPlayer now. The Switch's own card
-                    // exchange with the leader still runs after its first round.
-                    this.cardGiven = true;
-                    this.cableRequest = REQUEST_CARD;
-                    this.cablePushBlock(cardFromLinkPlayer(this.switchLP), CARD_SIZE);
-                    this.heldRequests.push(REQUEST_CARD);
-                    this.log('trainer card for the Switch\'s player given to the other GBA now');
-                } else if (!this.s1Done) this.heldRequests.push(words[1]);
+                // The other GBA asks for the Switch's trainer card right after the LinkPlayers
+                // and finishes its link-up ("Please enter") only with it. The Switch has it
+                // ready once it has walked to its room, after its first round.
+                if (!this.s1Done) this.heldRequests.push(words[1]);
                 else this.requestFromSwitch(words[1]);
                 break;
             case LINKCMD.READY_EXIT_STANDBY:

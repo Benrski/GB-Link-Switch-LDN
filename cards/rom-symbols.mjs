@@ -72,6 +72,9 @@ const SYMBOLS = {
   EXP_SHARE_EXP: ['gExpShareExp'],
   BATTLE_SCRIPTING: ['gBattleScripting'],
   BATTLE_TYPE: ['gBattleTypeFlags'],
+  BATTLE_OUTCOME: ['gBattleOutcome'],
+  BATTLE_MAIN_FUNC: ['gBattleMainFunc'],
+  CHOSEN_ACTIONS: ['gChosenActionByBattler'],
   QUEST_LOG_STATE: { frlg: ['gQuestLogState'] },
   // ROM data
   NATURE_NAMES: ['gNatureNamePointers'],
@@ -104,6 +107,7 @@ const SYMBOLS = {
   RUN_TEXT_PRINTERS: ['RunTextPrinters', 0, 'fn'],
   CB1_OVERWORLD: ['CB1_Overworld', 0, 'fn'],
   CB2_OVERWORLD: ['CB2_Overworld', 0, 'fn'],
+  SET_TURN_ORDER: ['SetActionsAndBattlersTurnOrder', 0, 'fn'],
   BATTLE_CB1: ['BattleMainCB1', 0, 'fn'],
   BATTLE_CB2: ['BattleMainCB2', 0, 'fn'],
   RETURN_TO_FIELD: ['CB2_ReturnToFieldContinueScript', 0, 'fn'],

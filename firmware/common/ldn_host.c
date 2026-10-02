@@ -205,6 +205,7 @@ int ldn_host_build_response(const ldn_network_t *net, const ldn_host_request_t *
 #include "esp_timer.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "ldn_session.h"
 #include "esp_wifi_default.h"
 #include "esp_private/wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -629,6 +630,7 @@ bool ldn_host_start(const ldn_host_config_t *cfg, ldn_host_scratch_t *scratch)
         wpa_cb->wpa_ap_get_wpa_ie = host_ap_get_wpa_ie;
     }
     if (esp_wifi_start() != ESP_OK) { printf("LDN_HOST_ERROR START\n"); return false; }
+    bridge_wifi_tx_power();
     esp_wifi_set_ps(WIFI_PS_NONE);
 
     esp_netif_dhcps_stop(s_host.ap_netif);

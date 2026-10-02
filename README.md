@@ -47,7 +47,7 @@ computer.
 **GBA to Switch** needs an ESP32 board and a GB-Link adapter. **PC to Switch** and
 **Mystery Gift** need only the ESP32 board.
 
-- An ESP32 board. The original ESP32 and the ESP32-S3 are the recommended ones.
+- An ESP32 board. The ESP32-S3 is the recommended one.
 
   | Chip | Connects over |
   | --- | --- |
@@ -60,10 +60,11 @@ computer.
   board needs four keys from it to talk to the Switch. The page sends them to the board
   over USB; nothing is uploaded anywhere.
 - For GBA to Switch: a GB-Link adapter, a **Game Boy Color link cable** (a Game Boy
-  Advance cable will not work) and a GBA with FireRed, LeafGreen or Emerald. Emerald can
-  only trade once the Switch's game has finished the Sevii Islands story (Cerulean Cave
-  shows on its town map), just like between two GBAs. Until then Emerald says the other
-  trainer is not ready.
+  Advance cable will not work) and a GBA with FireRed, LeafGreen or Emerald. Between
+  Emerald and the Switch's game, the games allow trades only once both players have
+  entered the Hall of Fame and the Switch player has finished the Sevii Islands story
+  (Cerulean Cave shows on its town map), just like between two GBAs. When the page
+  carries the link, turning on its National Dex bypass lets them trade anyway.
 
 ## Setting up
 
@@ -128,6 +129,11 @@ Card and press *Start*. On the Switch, pick MYSTERY GIFT on the game's main menu
 WONDER CARDS, then FRIEND, and choose GBLINK from the list. Once the card is saved, talk
 to the deliveryman upstairs in any Pokémon Center. The page stays ready for the next card,
 on the same Switch or another one.
+
+Your own Wonder Cards go the same way: drop a `.wc3` file on the Mystery Gift card, or
+click it to choose one. Only cards made for FireRed or LeafGreen work on the Switch, such
+as the `FL - …` files in Project Pokémon's
+[event gallery](https://github.com/projectpokemon/EventsGallery).
 
 MYSTERY GIFT shows on the main menu once the game has it unlocked: answer a Poké Mart
 questionnaire with LINK TOGETHER WITH ALL, then save.
