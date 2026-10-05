@@ -247,6 +247,35 @@ AgA=`), {
         },
     },
     {
+        id: 'custom-walk-through-walls',
+        label: 'Walk Through Walls (Press R)',
+        description: 'Walk through walls, trees, rocks and counters. People still block the way, and ledges, water and height changes work as usual. It starts on; press R in the field to switch it off and on (a PC’s sounds tell which). Switching it off puts every wall back at once. It stays off in the Union Room. R no longer opens the Help menu while it’s on (L still does). It lasts until the game is closed or reset; talk to the deliveryman again to turn it off.',
+        payloads: {
+            ...romPayloads(decodeBase64(`OQRcAFEAAAAcANG7xsUAzsLMyc/BwgDRu8bGzf/////////////////////////////I4+jc3eLb
+AOfo1eLY5wDd4gDt4+nmAOvV7f//////////////////0dXg4OcA1eLYAOjm2dnnANfV4rToAOfo
+4+QA7ePprf///////////8wA5+vd6Nfc2ecA3egA49raANXi2ADj4q0AzdnZ///////////////o
+3NkA2Nng3erZ5u3h1eIA4+IA6NzZAKPi2P//////////////////2uDj4+YA49oA1QDKycUbx8nI
+AL2/yM6/zK3//////////////////8G8rsbd4t8AztnV4f//////////////////////////////
+////////////////////////////////////////////////////////////AAAAAAAAuAAAAAhq
+Wh+uAAAIUrsFowAACB+vAAAIRbsFowAACB+8AAAICrsFowAACA8A0HgAAg8BkXhAGA8CgBgEMg8D
+mmAARx9g/wMCAbsBdAAACL2tAAAIZm4UCCENgAAAuwGZAAAIIxUQAAM7Ab3jAAAIZm1obAK9FwEA
+CGZuFAghDYABALsBmQAACCMVEAADTgG9PQEACGZtaGwCvVQBAAhmbWhsAr1oAQAIZm1obALN3NXg
+4ADDAODZ6ADt4+kA69Xg3wDo3Obj6dvc/uvV4ODnuADr3Nnm2erZ5gDt4+kA1ebZrP++4+LZqwDK
+5tnn5wDMAN3iAOjc2QDa3dng2P7o4wDn693o19wA3egA49raANXi2ADj4q3/0dXg3wDO3Obj6dvc
+ANHV4ODnAN3nAOPirf7F2dnkAN3oAOPirP/R1eDg5wDV5tkA69Xg4OcA1dvV3eKr/73j4dkA1tXX
+3wDV4u0A6N3h2av/ztzd5wDb3droANjj2efitOgA6+Pm3wDr3ejc/ujc3ecA6tnm593j4gDj2gDo
+3NkA29Xh2a3/AABwtRJLHogAIBiAEU0TpEkggAAEOCFYKVD70Q5MASAgcGBwDUgBaEsbmwoC0GFg
+aRwBYAZLHoBwvQZIACEBcEFwAUgBcHBHwEZx8QMCCAIABAD8AwJg/wMC4CcAA/C1M0wgeAAoPdAy
+T7iLwAc50TFIASEBcDhoMUmIQjLReGgwSYhCLtEsSAB4Aigq0jFLAPAu+AAoJdEA8Cv4YHgAKCDQ
+KkhAeSQhSEMpSUAYECFGXgIxRV4CPq8cAj00ACAAKQAmSwDwFPgCACAAKQAkSwDwDvgBNDAdhELw
+3QE1vULs3RJMY2gA8AP48LwBvABHGEcAtfiNQAoX0xJIAHgAKBPREUgAeAIoD9EQSMB4ACgL0WB4
+ASFIQGBwEkkAKADREkkIAA1L//fj/wG8AEdg/wMCgCMAA3HxAwL2rQMC7ZwFCG2dBQicEAADqA8A
+A3RwAwI0bgMCPewRCHHSBgjtxQUISccFCBD9AwIU/QMCLwQAAiOZwQUIIyneBQgvAwACwEY=`), {
+                'BPGE 1.10': decodeBase64(`XAEBR0QEARU=`),
+            }),
+        },
+    },
+    {
         id: 'custom-pokemon-follow',
         label: 'Pokémon Follow (Walks Behind You)',
         description: 'Your lead party Pokémon walks behind you in the overworld, as in later games, if the game has an overworld sprite of its species: Pikachu, Clefairy, Jigglypuff, Wigglytuff, Meowth, Psyduck, Slowpoke, Slowbro, Seel, Machop, Machoke, Poliwrath, Voltorb, Pidgey, Pidgeot, Spearow, Fearow, Doduo, Cubone, Chansey, Kangaskhan, Lapras, Kabuto and the Nidoran family (they turn to face where they go). It steps where you stepped, jumps ledges after you and comes along through doors; you and other people walk through it, and push past it where you can’t. Face it and press A to hear its cry. It hides while you bike or surf, and steps away while a menu or battle is on (back with your next step), so a save never keeps it. It lasts until the game is closed or reset.',
