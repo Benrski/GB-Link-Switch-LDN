@@ -365,14 +365,27 @@
             </details>
             <p class="status" id="gift-file-note" aria-live="polite"></p>
             <p class="fine" id="gift-description" data-base="fine"></p>
+            <p class="gift-pick" id="gift-sav-row" hidden><label for="gift-sav">.sav file</label> <input type="file" id="gift-sav" accept=".sav"></p>
+            <p class="status" id="gift-sav-note" aria-live="polite"></p>
 
             <div class="session" id="gift-session" hidden>
                 <p class="headline" id="gift-headline">–</p>
                 <p class="hint" id="gift-hint"></p>
+                <div class="transfer" id="gift-progress" hidden>
+                    <div class="transfer-track" role="progressbar" id="gift-progress-bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="transfer-fill" id="gift-progress-fill"></div>
+                        <img class="transfer-mon" id="gift-progress-mon" alt="" hidden>
+                    </div>
+                </div>
                 <div class="answers" id="gift-decision" hidden>
                     <button class="primary" type="button" id="gift-again">Send it again</button>
                     <button type="button" id="gift-keep">Leave the one it has</button>
                 </div>
+            </div>
+
+            <div class="backups" id="gift-backups" hidden>
+                <p class="backups-title">Backed-up saves</p>
+                <ul class="backups-list" id="gift-backups-list"></ul>
             </div>
 
             <p class="status" id="gift-note" aria-live="polite"></p>

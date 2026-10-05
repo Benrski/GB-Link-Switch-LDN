@@ -11,8 +11,8 @@ idf_component_register(
     PRIV_INCLUDE_DIRS "lib/common" "lib/decompress")
 # No x86 assembly on Xtensa, and no threading in the decoder.
 # The decoder's literal overflow buffer defaults to 64 KB, which alone puts a DCtx at
-# ~94 KB -- more than the largest free block once Wi-Fi is up. Pia's bodies are a few
-# hundred bytes into a 2 KB destination, so the literals live in dst and this buffer is
-# barely touched. ZSTD_DECODER_INTERNAL_BUFFER is guarded by #ifndef for exactly this.
+# ~94 KB -- more than the largest free block once Wi-Fi is up. Pia's bodies are small
+# enough that their literals live in the destination, so this buffer is barely touched
+# (CONFIG_PIA_ZSTD_LITERAL_BUFFER). ZSTD_DECODER_INTERNAL_BUFFER is guarded by #ifndef.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    ZSTD_DISABLE_ASM=1 ZSTD_MULTITHREAD=0 ZSTD_DECODER_INTERNAL_BUFFER=8192)
+    ZSTD_DISABLE_ASM=1 ZSTD_MULTITHREAD=0 ZSTD_DECODER_INTERNAL_BUFFER=${CONFIG_PIA_ZSTD_LITERAL_BUFFER})

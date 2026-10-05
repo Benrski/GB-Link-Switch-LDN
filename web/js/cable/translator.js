@@ -144,14 +144,28 @@ export class KeyQueue {
     clear() { this.codes = []; }
 }
 
+const REPAIR_QUIET_FRAMES = 30;
+const REPAIRS = 3;
+const REQUEST_FRAGMENTS = [17, 17, 9, 19, 4];
+// Frames a repair's repeat may still come after the block came whole.
+const REPEAT_FRAMES = 120;
+// A request's type by its block's fragments (17 is the LinkPlayer's or a party part's,
+// told apart by the pull), and the frames between a request and the leader's own block.
+const REQUEST_TYPES = { 17: 1, 9: 2, 19: 3, 4: 4 };
+const PULL_WITH_BLOCK_FRAMES = 8;
+const repairType = (count) => [4, 2, 1, 3].find((type) => REQUEST_FRAGMENTS[type] >= count) ?? null;
+
 function newRecv() {
-    return { count: 0, flags: 0, receiving: false, done: false, lastIndex: -1, buf: new Uint8Array(MAX_BLOCK_BYTES) };
+    return { count: 0, flags: 0, receiving: false, done: false, lastIndex: -1, buf: new Uint8Array(MAX_BLOCK_BYTES), heardAt: 0, repairs: 0, need: 0 };
 }
 
 function recvInit(r, count) {
     if (count === 0 || count > MAX_FRAGS) return;
-    // A repeated INIT of the block being received keeps its fragments.
-    if (!r.receiving || r.done || count !== r.count) {
+    // The repeat a repair asked for keeps the fragments already here.
+    if (r.receiving && !r.done && r.repairs && count === REQUEST_FRAGMENTS[repairType(r.need)]) { r.count = count; return; }
+    // A repeated INIT of the block being received keeps its fragments; the game repeats one
+    // only before the fragments, so an INIT after some is the next block, of the same size.
+    if (!r.receiving || r.done || count !== r.count || r.flags) {
         Object.assign(r, newRecv());
         r.count = count;
         r.receiving = true;
@@ -160,11 +174,15 @@ function recvInit(r, count) {
 
 function recvBlock(r, index, slot) {
     if (!r.receiving || index >= r.count) return false;
+    const need = r.need || r.count;
+    if (r.repairs && index >= need) return false;
+    // A repeat that differs from a fragment already here is another block: start it over.
+    if (r.repairs && r.flags & (1 << index) && slot.subarray(2, 2 + FRAG_BYTES).some((b, i) => b !== r.buf[index * FRAG_BYTES + i])) r.flags = 0;
     const wasDone = r.done;
     r.lastIndex = index;
     r.flags = (r.flags | (1 << index)) >>> 0;
     r.buf.set(slot.subarray(2, 2 + FRAG_BYTES), index * FRAG_BYTES);
-    if (r.flags === ((1 << r.count) - 1) >>> 0) r.done = true;
+    if (r.flags === ((1 << need) - 1) >>> 0) r.done = true;
     return r.done && !wasDone;
 }
 
@@ -194,7 +212,8 @@ function blockWords(s, index, words) {
 }
 
 // One frame of the child's block sender, paced by the leader's reflection of our fragments.
-function sendTick(s, ack, words) {
+// `hold` keeps the last fragment back: the leader moves on once it has our block.
+function sendTick(s, ack, words, hold = false) {
     words.fill(0);
     if (!s.active) return;
     if (s.state === SEND.INIT) {
@@ -212,6 +231,7 @@ function sendTick(s, ack, words) {
     }
     if (s.state === SEND.STREAM) {
         const index = s.index;
+        if (hold && index >= s.count - 1) return;
         blockWords(s, index, words);
         if (index >= s.count - 1) { s.state = SEND.HOLD; s.holdSends = 0; }
         else s.index++;
@@ -338,6 +358,9 @@ export class CableTranslator {
 
         this.bar = newBarrier();
         this.rx0 = newRecv();    // the leader's own blocks
+        this.repairType = null;  // a block request to send for a block that stopped short
+        this.repeatDue = null;   // { count, data, until }: the repeat of a repaired block, still to come
+        this.pullAt = -Infinity; // host frame of the leader's last block request
         this.rx1 = newRecv();    // the leader's reflection of ours
         this.send = newSend();
         this.ni = newNI();
@@ -581,6 +604,7 @@ export class CableTranslator {
     // The leader pulled a block. The first pull is the LinkPlayer, already held; any other is
     // forwarded to the game as the cable's request for that block type.
     hostPull(type) {
+        this.pullAt = this.hostFrames;
         this.log(`leader pulls block type ${type}`);
         if (type === 2 && this.cardRequested) {
             if (this.cardQueued) return;
@@ -953,13 +977,9 @@ export class CableTranslator {
         if (b.initiated) {
             // Repeat every 60 frames: the leader listens only once its game reaches the standby.
             if (b.sinceInitiate && b.sinceInitiate % 60 === 0) b.burstN = 0;
-            if (++b.sinceInitiate > INITIATE_TIMEOUT) {
-                b.mode = BAR.IDLE;
-                b.initiated = false;
-                b.timedOut = true;
-                this.log(`barrier: standby unanswered for ${INITIATE_TIMEOUT} frames, released (count held at ${b.localCount})`);
-                return true;
-            }
+            // The Switch can take long to reach it (a trade evolution, the player reading its
+            // messages, a slow network between the pages): the round is not passed until it does.
+            if (++b.sinceInitiate === INITIATE_TIMEOUT) this.log(`barrier: standby unanswered for ${INITIATE_TIMEOUT} frames, still asking`);
         } else if (b.sinceHost > IDLE_TIMEOUT) {
             b.localCount++;
             b.rounds++;
@@ -1010,6 +1030,8 @@ export class CableTranslator {
         this.keyCount = 0;
         this.rx0 = newRecv();
         this.rx1 = newRecv();
+        this.repairType = null;
+        this.repeatDue = null;
         this.send = newSend();
         this.childQueue = [];
         this.bar = newBarrier();
@@ -1106,6 +1128,12 @@ export class CableTranslator {
         this.startDueRound();
         if (barrierWant(this.bar, words)) return;
         if (this.bar.mode !== BAR.IDLE) return;
+        if (this.repairType !== null) {
+            words[0] = RFUCMD.SEND_BLOCK_REQ;
+            words[1] = this.repairType;
+            this.repairType = null;
+            return;
+        }
         if (!this.send.active && this.childQueue.length) {
             const block = this.childQueue.shift();
             sendStart(this.send, block.data, block.size, block.isLinkPlayer);
@@ -1116,7 +1144,10 @@ export class CableTranslator {
         }
         if (this.send.active) {
             const wasLP = this.send.isLinkPlayer, wasCard = this.send.isCard;
-            sendTick(this.send, this.rx1, words);
+            // While the leader's own block is short of fragments, ours stays one short too:
+            // the leader then cannot move on, and its block can still be asked for again.
+            const rx0 = this.rx0;
+            sendTick(this.send, this.rx1, words, !this.battleBlocks && rx0.receiving && !rx0.done && rx0.repairs < REPAIRS);
             if (!this.send.active && wasCard) {
                 this.cardSendDone = true;
                 this.log('trainer card acknowledged by the Switch');
@@ -1198,8 +1229,24 @@ export class CableTranslator {
                     break;
                 case RFUCMD.SEND_BLOCK_INIT:
                 case RFUCMD.SEND_BLOCK:
-                    if (feedRecv(this.rx0, words0, slot0)) {
-                        this.hostBlock(this.rx0.count, this.rx0.buf);
+                    // The leader's request and its own block go out together, the request once:
+                    // a block of a request's size with no request just before it is answered
+                    // as that request (not in a battle, where blocks come unasked).
+                    if (op === RFUCMD.SEND_BLOCK_INIT && (!this.rx0.receiving || this.rx0.done) && !this.battleBlocks
+                        && REQUEST_TYPES[words0[1]] !== undefined && this.hostFrames - this.pullAt > PULL_WITH_BLOCK_FRAMES) {
+                        this.log(`the Switch's block of ${words0[1]} fragments came without its request: answering it`);
+                        this.hostPull(REQUEST_TYPES[words0[1]]);
+                    }
+                    const whole = feedRecv(this.rx0, words0, slot0);
+                    this.rx0.heardAt = this.hostFrames;
+                    if (whole) {
+                        const count = this.rx0.need || this.rx0.count, data = this.rx0.buf.slice(0, count * FRAG_BYTES);
+                        const repeat = this.repeatDue;
+                        this.repeatDue = this.rx0.repairs ? { count: REQUEST_FRAGMENTS[repairType(count)], data, until: this.hostFrames + REPEAT_FRAMES } : null;
+                        // The repeat a repair asked for, after the block came whole anyway.
+                        if (repeat && this.hostFrames <= repeat.until && this.rx0.count === repeat.count && !this.rx0.repairs
+                            && repeat.data.every((b, i) => b === this.rx0.buf[i])) this.repeatDue = null;
+                        else this.hostBlock(count, this.rx0.buf);
                         this.rx0.receiving = false;
                         this.rx0.done = false;
                         this.rx0.flags = 0;
@@ -1229,6 +1276,17 @@ export class CableTranslator {
             }
         }
         if (!slotIdle(slot1)) feedRecv(this.rx1, slotWords(slot1), slot1);
+        const rx0 = this.rx0;
+        // Not in a battle: its blocks come back to back without a request, and the game
+        // ignores SendBlock failing, so a repeat that keeps the leader busy loses its next one.
+        if (!this.battleBlocks && rx0.receiving && !rx0.done && repairType(rx0.need || rx0.count) !== null && rx0.repairs < REPAIRS
+            && this.hostFrames - rx0.heardAt >= REPAIR_QUIET_FRAMES) {
+            rx0.need ||= rx0.count;
+            rx0.repairs++;
+            rx0.heardAt = this.hostFrames;
+            this.repairType = repairType(rx0.need);
+            this.log(`the Switch's block of ${rx0.need} fragments stopped short: asking for it again`);
+        }
         if (this.barrierObserve(sawBarrier)) this.roundPassed();
         if (this.link !== AIR.UNI) return;   // the exit above ended the link
 

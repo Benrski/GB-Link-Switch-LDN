@@ -18,6 +18,8 @@ Game Boy Advance or from your PC.
   and LeafGreen event distributions, the Project Wonder events, and the GB-Link Team's
   cards (speed up or slow down, event Pokémon, Espeon and Umbreon, HM moves without HMs,
   the Physical/Special split, the Pocket Casino and more). You need only the ESP32 board.
+- **Save backup and restore.** The same Mystery Gift link copies the Switch's FireRed or
+  LeafGreen save to the page as a `.sav` file, or writes a `.sav` back.
 
 Everything is set up and played from **<https://switch.gblink.io>**.
 
@@ -134,6 +136,15 @@ Your own Wonder Cards go the same way: drop a `.wc3` file on the Mystery Gift ca
 click it to choose one. Only cards made for FireRed or LeafGreen work on the Switch, such
 as the `FL - …` files in Project Pokémon's
 [event gallery](https://github.com/projectpokemon/EventsGallery).
+
+#### Backing up and restoring the save
+
+*Back up the save* and *Restore a save* sit at the end of the list. They go the same way as
+a card. A backup copies the whole 128 KB save to the page, which offers it as a `.sav` file
+for PKHeX or an emulator; the game shows a message and saves nothing. A restore writes the
+chosen `.sav` beside the game's newest save, checks every sector, then lets the game load it
+and save; if anything is off, or the link drops halfway, the game keeps the save it had.
+Either takes one to four minutes, depending on how much of the save is empty.
 
 MYSTERY GIFT shows on the main menu once the game has it unlocked: answer a Poké Mart
 questionnaire with LINK TOGETHER WITH ALL, then save.

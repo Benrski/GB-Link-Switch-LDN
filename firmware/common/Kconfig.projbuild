@@ -27,6 +27,14 @@ config PIA_STATIC_ZSTD_CONTEXT
     help
         40 KB of static data. Turn it off on a chip whose static data region is too small
         (the original ESP32); the context then comes from the heap at the start of boot.
+config PIA_ZSTD_LITERAL_BUFFER
+    int "Decompression literal buffer, in bytes"
+    range 1024 65536
+    default 8192
+    help
+        Part of the decompression context, used only for literals that do not fit in
+        the destination. Pia's bodies are small enough that the 1 KB minimum works; each
+        KB less is a KB more heap.
 config BRIDGE_USB_RX_BUFFER
     int "USB console receive buffer, in bytes"
     default 32768

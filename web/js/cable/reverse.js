@@ -52,6 +52,8 @@ const REQUEST_GAP_FRAMES = 15;
 const REREQUEST_FRAMES = 60;
 const REREQUESTS = 3;
 const KEY_EMPTY = 0x11;
+const KEY_READY = 0x16;
+const KEY_EXIT = 0x17;
 const KEY_RATE_WINDOW = 40;
 const MAGIC = Array.from('GameFreak inc.', (c) => c.charCodeAt(0));
 // "CELIO" in the game's charset, for the group's name until the other player is known.
@@ -125,6 +127,7 @@ export class ReverseTranslator {
         this.held = [];              // commands for the parent while its link is closed
         this.keysToParent = false;
         this.keysToSwitch = false;
+        this.keysAwaitSwitch = false;  // a reopened room: keys go to the Switch once it reports its own
         this.switchKeys = new KeyRuns();   // the Switch's reports, replayed at the cable's pace
         this.steps = new StepFollower((code) => this.switchKeys.push(code));
         this.parentKeys = new KeyQueue();
@@ -177,6 +180,11 @@ export class ReverseTranslator {
             this.exitPending = true;
             this.pair();
         } else if (op === 0xbe00) {
+            if (this.keysAwaitSwitch) {
+                this.keysAwaitSwitch = false;
+                this.parentKeys.clear();
+                this.keysToSwitch = true;
+            }
             const code = words[1] & 0xff;
             this.steps.report(code, words[1] >> 8);
             if (this.keysToParent) this.keyPushes++;
@@ -305,6 +313,9 @@ export class ReverseTranslator {
     startStep() {
         if (this.ended) return false;
         if (this.exitPending) {
+            // The Switch's exit key, still on its way to the cable, goes first: the other GBA
+            // leaves the room only on that key, and the close ends the keys.
+            if (this.switchKeys.runs.some((run) => run.code === KEY_EXIT || run.code === KEY_READY)) return false;
             this.exitPending = false;
             return this.send(LINKCMD.READY_CLOSE_LINK, () => {
                 this.log('both left the room');
@@ -371,6 +382,7 @@ export class ReverseTranslator {
             this.live = false;
             this.keysToParent = false;
             this.keysToSwitch = false;
+            this.keysAwaitSwitch = false;
         }
         this.step = { kind, done };
         return true;
@@ -532,7 +544,7 @@ export class ReverseTranslator {
                 break;
             case LINKCMD.READY_EXIT_STANDBY:
             case LINKCMD.READY_CLOSE_LINK:
-                if (words[0] === LINKCMD.READY_CLOSE_LINK) { this.keysToParent = false; this.keysToSwitch = false; }
+                if (words[0] === LINKCMD.READY_CLOSE_LINK) { this.keysToParent = false; this.keysToSwitch = false; this.keysAwaitSwitch = false; }
                 if ((this.otherChoice !== null || this.refused) && !this.parentLP) {
                     // The other GBA ends a link-up it refused: answered here.
                     if (words[0] === LINKCMD.READY_CLOSE_LINK) this.cablePush(cmd(LINKCMD.READY_CLOSE_LINK));
@@ -602,7 +614,11 @@ export class ReverseTranslator {
                 if (this.linkType !== LINKTYPE.BATTLE && this.linkType !== LINKTYPE.TRADE_MENU) {
                     this.steps.reset();
                     this.keysToParent = true;
-                    this.keysToSwitch = true;
+                    // Keys reach the Switch once it reports its own: after a battle it may
+                    // still be saving, and every key frame then waits in its 20-slot receive
+                    // queue until it overflows and the link is lost.
+                    this.keysToSwitch = false;
+                    this.keysAwaitSwitch = true;
                 }
             }
             this.pair();
@@ -629,6 +645,8 @@ export class ReverseTranslator {
             this.keyStep = Math.min(3, Math.max(1, this.keyPushes / this.keyPops));
             this.keyPushes = this.keyPops = 0;
         }
-        return cmd(LINKCMD.SEND_HELD_KEYS, this.switchKeys.pop(this.keyStep) ?? KEY_EMPTY);
+        const key = cmd(LINKCMD.SEND_HELD_KEYS, this.switchKeys.pop(this.keyStep) ?? KEY_EMPTY);
+        if (this.exitPending && !this.step) this.pair();
+        return key;
     }
 }

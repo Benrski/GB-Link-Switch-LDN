@@ -15,6 +15,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_attr.h"
+#include "esp_wifi.h"
 
 /* Bare text would corrupt binary-mode frames. */
 #define printf ldn_wire_printf
@@ -499,10 +500,11 @@ static void print_session_summary(void)
     rate(skip, sizeof(skip), skipped, ms);
     printf("LDN_BRIDGE session (%s leading) %d s: Switch datagrams in %s/s out %s/s, frames to GBA %s/s from GBA %s/s, "
            "Switch skipped %s/s, board shed %d dropped %d resends %d, adapter queue_high %u sheds %u drops %u uart_lost %u, "
-           "board resync %u lost %u+%d+%u\n",
+           "board resync %u lost %u+%d+%u, damaged from the page %u, lowest heap %u\n",
            host ? "GBA" : "Switch", (int)(ms / 1000), in, out, to_gba, from_gba, skip, shed, dropped, resends,
            queue_high, sheds, queue_drops, overflows, (unsigned)resync, (unsigned)inbound_lost, g.to_gba_lost,
-           (unsigned)bridge_transport_dropped());
+           (unsigned)bridge_transport_dropped(), (unsigned)ldn_wire_bad_frames(),
+           (unsigned)esp_get_minimum_free_heap_size());
 }
 
 static void on_member_left(const ldn_host_member_t *m)
@@ -746,6 +748,8 @@ void pia_bridge_stop(void)
    adapter, dbgAnyRx stays set and pico_link leaves it alone. */
 static void bridge_restart(bool session_ended)
 {
+    /* A hosted session can end on the GBA's side, with the Switch still in the room. */
+    if (g.state == BR_HOST && g.member_index >= 0 && g.session_ms) print_session_summary();
     if (session_ended)
     {
         pico_link_set_mode();
@@ -773,8 +777,14 @@ static void check_host_stall(int64_t now)
     }
     if (g.stall_reported || now - g.stall_since < 1500) return;
     g.stall_reported = true;
-    printf("LDN_BRIDGE Switch has not acknowledged our frames for %d ms (%d waiting, %d resends, retry after %d ms)\n",
-           (int)(now - g.stall_since), pending, g.host->resends, (int)pia_reliable_rto(&g.host->reliable));
+    /* Signal and memory tell a Switch out of range from a board out of buffers. */
+    wifi_sta_list_t stations;
+    int rssi = 0;
+    if (esp_wifi_ap_get_sta_list(&stations) == ESP_OK && stations.num > 0) rssi = stations.sta[0].rssi;
+    printf("LDN_BRIDGE Switch has not acknowledged our frames for %d ms (%d waiting, %d resends, retry after %d ms; "
+           "signal %d dBm, heap %u, lowest %u)\n",
+           (int)(now - g.stall_since), pending, g.host->resends, (int)pia_reliable_rto(&g.host->reliable), rssi,
+           (unsigned)esp_get_free_heap_size(), (unsigned)esp_get_minimum_free_heap_size());
 }
 
 /* Records both sides' view of a stalled stream to the Switch, once per stall. */

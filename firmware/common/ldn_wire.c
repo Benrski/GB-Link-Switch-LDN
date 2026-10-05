@@ -106,25 +106,30 @@ int ldn_wire_printf(const char *format, ...)
     return n;
 }
 
+static uint32_t s_bad_frames;
+
+uint32_t ldn_wire_bad_frames(void) { return s_bad_frames; }
+
 void ldn_wire_feed(uint8_t value, void (*dispatch)(const char *))
 {
     if (value) {
         if (used < sizeof(input)) input[used++] = value; else overflow = true;
         return;
     }
-    if (!used || overflow) { used = 0; overflow = false; return; }
+    if (!used) return;
+    if (overflow) { used = 0; overflow = false; ++s_bad_frames; return; }
     static uint8_t frame[MAX_FRAME];
     size_t read = 0, out = 0;
     while (read < used) {
         uint8_t code = input[read++];
         size_t needed = code - 1 + (code != 255 && read + code - 1 < used ? 1 : 0);
-        if (!code || read + code - 1 > used || out + needed > sizeof(frame)) { used = 0; return; }
+        if (!code || read + code - 1 > used || out + needed > sizeof(frame)) { used = 0; ++s_bad_frames; return; }
         for (int i = 1; i < code; ++i) frame[out++] = input[read++];
         if (code != 255 && read < used) frame[out++] = 0;
     }
     used = 0;
     if (out < 16 || frame[0] != 1 || out != (size_t)(frame[10] | frame[11] << 8) + 16 ||
-        get32(frame + out - 4) != crc32(frame, out - 4)) return;
+        get32(frame + out - 4) != crc32(frame, out - 4)) { ++s_bad_frames; return; }
     request = get32(frame + 2);
     const uint32_t incoming_session = get32(frame + 6);
     const size_t length = out - 16;

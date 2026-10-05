@@ -94,6 +94,10 @@ const state = {
     giftStatus: null,       // the link now: { stage, event, player, detail, result }
     giftDecision: null,     // the question the Switch waits on, or null
     giftResult: null,       // the last delivery, shown until the next Switch joins
+    giftBackups: [],        // saves backed up while the page is open, newest first: { bytes, name, whole, time }
+    giftLinkBackup: null,   // the entry for the backup in this link
+    giftRestore: null,      // the .sav chosen to restore, { bytes, name }
+    giftRestoreNote: null,  // why the chosen .sav can't be restored
     giftNote: null,         // { text, tone }
     giftClosing: false,     // Stop pressed: waiting for the board to close its room and restart
     bridgeTimer: null,
@@ -1277,9 +1281,9 @@ let gift = null;            // the gift modules (events, distribution, .wc3 file
 let giftLoading = null;
 
 function loadGift() {
-    giftLoading ??= Promise.all([import('./gift/events.js'), import('./gift/distribution.js'), import('./gift/mystery-gift.js'), import('./gift/wc3.js')]).then(
-        ([events, distribution, link, wc3]) => {
-            gift = { ...events, ...distribution, ...wc3, describeGameCode: link.describeGameCode };
+    giftLoading ??= Promise.all([import('./gift/events.js'), import('./gift/distribution.js'), import('./gift/mystery-gift.js'), import('./gift/wc3.js'), import('./gift/save-backup.js')]).then(
+        ([events, distribution, link, wc3, saves]) => {
+            gift = { ...events, ...distribution, ...wc3, ...saves, describeGameCode: link.describeGameCode };
             const select = $('gift-event');
             select.replaceChildren(...gift.EVENT_GROUPS.map((group) => {
                 const list = document.createElement('optgroup');
@@ -1299,7 +1303,26 @@ function loadGift() {
 }
 
 function giftEventById(id) {
-    return id === state.giftFile?.id ? state.giftFile : gift?.findEvent(id);
+    const event = id === state.giftFile?.id ? state.giftFile : gift?.findEvent(id);
+    return event?.kind === 'restore' && state.giftRestore ? { ...event, save: state.giftRestore.bytes, saveName: state.giftRestore.name } : event;
+}
+
+// A .sav chosen for the restore: 128 KB of flash (a 16-byte emulator footer is
+// dropped), with at least one whole copy of the game.
+async function onGiftSav(file) {
+    if (!file) return;
+    await giftLoading;
+    if (!gift) return;
+    let bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length === gift.SAVE_BYTES + 16) bytes = bytes.subarray(0, gift.SAVE_BYTES);
+    state.giftRestore = null;
+    state.giftRestoreNote = null;
+    if (bytes.length !== gift.SAVE_BYTES) state.giftRestoreNote = `${file.name} is not a FireRed or LeafGreen save: those are 128 KB.`;
+    else if (!gift.describeSave(bytes).sound) state.giftRestoreNote = `${file.name} has no whole copy of a game in it.`;
+    else state.giftRestore = { bytes: bytes.slice(), name: file.name };
+    log('gift', state.giftRestore ? `chose ${file.name} to restore` : state.giftRestoreNote);
+    state.gift?.setEvent(giftEventById(state.giftEvent));
+    renderGift();
 }
 
 function chooseGiftEvent(id) {
@@ -1352,6 +1375,7 @@ function giftBlocker() {
     if (newer(GIFT_FIRMWARE, state.esp.info.version)) return `Mystery Gift needs the board’s firmware ${GIFT_FIRMWARE} or newer. Install it again in step 1.`;
     if (!state.keys?.complete) return 'The board needs its keys from step 1.';
     if (state.esp.info.transport === 'UART' && state.esp.baudRate < FAST_BAUD) return 'This board’s firmware runs its console at 115200 baud, which cannot carry the link. Update it in step 1.';
+    if (giftEventById(state.giftEvent)?.kind === 'restore' && !state.giftRestore) return 'Choose the .sav file to restore.';
     return null;
 }
 
@@ -1363,8 +1387,21 @@ async function giftStart() {
     distribution.addEventListener('status', (e) => {
         if (state.gift !== distribution || state.giftClosing) return;
         const status = e.detail;
-        if (status.stage === 'joining') state.giftResult = null;
+        if (status.stage === 'joining') { state.giftResult = null; state.giftWhole = false; state.giftLinkBackup = null; }
+        if (status.stage === 'checked') state.giftGame = status.detail;
+        if (status.stage === 'backing-up' && status.detail.save) {
+            keepGiftBackup(status.detail.save, saveFileName({ game: state.giftGame, player: status.player }), status.detail.summary?.sound);
+            state.giftWhole = true;
+            log('gift', 'the whole save is in');
+        }
         if (status.stage === 'checked') log('gift', `the Switch runs ${gift.describeGameCode(status.detail.gameCode)}, revision ${status.detail.revision}`);
+        const before = state.giftStatus?.stage === 'backing-up' ? state.giftStatus.detail.done : -1;
+        if (status.stage === 'backing-up' && (before < 0 || Math.floor(status.detail.done / 16) > Math.floor(before / 16))) {
+            log('gift', `backing up: ${status.detail.done} of ${status.detail.total} KB in`);
+        }
+        if (status.stage === 'restoring' && status.detail.done !== state.giftStatus?.detail?.done) {
+            log('gift', `restoring: ${status.detail.done} of ${status.detail.total} sectors written`);
+        }
         state.giftStatus = status;
         renderGift();
         if (status.stage === 'open' || status.stage === 'restarting') pollSoon();
@@ -1378,6 +1415,7 @@ async function giftStart() {
         if (state.gift !== distribution || state.giftClosing) return;
         state.giftResult = e.detail;
         state.giftDecision = null;
+        if (e.detail.save) keepGiftBackup(e.detail.save, saveFileName(e.detail), e.detail.summary?.sound);
         const view = giftResultView(e.detail);
         if (view) log('gift', view.headline);
         renderGift();
@@ -1433,11 +1471,72 @@ function giftResultView(result) {
         case 'had-card': return { headline: `Not sent: ${who} already had this Wonder Card.`, hint: '', tone: 'warn' };
         case 'kept-card': return { headline: `Not sent: ${who} kept the Wonder Card it had.`, hint: '', tone: 'warn' };
         case 'cant-accept': return { headline: 'The Switch could not take a Wonder Card.', hint: '', tone: 'warn' };
-        case 'unsupported': return { headline: `Not sent: ${name} does not run on ${gift.describeGameCode(result.game.gameCode)}.`, hint: 'The GB-Link Team’s cards run on the Switch’s English FireRed and LeafGreen.', tone: 'warn' };
-        case 'lost': return { headline: 'The link to the Switch dropped before the card was delivered.', hint: '', tone: 'warn' };
-        case 'error': return { headline: result.message ?? 'The Mystery Gift exchange failed.', hint: '', tone: 'warn' };
+        case 'unsupported': if (result.event?.kind === 'backup') return { headline: `The backup does not run on ${gift.describeGameCode(result.game.gameCode)}.`, hint: 'It works on the Switch’s FireRed and LeafGreen.', tone: 'warn' };
+            return { headline: `Not sent: ${name} does not run on ${gift.describeGameCode(result.game.gameCode)}.`, hint: 'The GB-Link Team’s cards run on the Switch’s English FireRed and LeafGreen.', tone: 'warn' };
+        case 'backed-up': return result.summary.sound
+            ? { headline: `${who}’s save is backed up.`, hint: 'Download the .sav file below.', tone: 'good' }
+            : { headline: `${who}’s save came over, but neither of its two copies is whole.`, hint: 'Download the .sav file below to keep it, and try the backup again.', tone: 'warn' };
+        case 'restored': return { headline: `${who}’s save is now ${result.event?.saveName ?? 'the chosen .sav'}.`, hint: 'Let the Switch finish saving; CONTINUE then loads it.', tone: 'good' };
+        case 'restore-failed': return result.reason === 'unsound'
+            ? { headline: 'Not restored: the .sav has no whole copy of a game in it.', hint: 'Nothing on the Switch changed.', tone: 'warn' }
+            : { headline: `${who} could not take the save, so the game saved nothing.`, hint: 'It keeps the save it had.', tone: 'warn' };
+        case 'lost':
+            if (result.event?.kind === 'restore') return { headline: 'The link to the Switch dropped during the restore, so the game saved nothing yet.', hint: `Choose MYSTERY GIFT, WONDER CARDS, FRIEND, GBLINK again: the restore goes on from where it stopped. Until it is done, the Switch keeps the save it had.`, tone: 'warn' };
+            if (result.event?.kind === 'backup' && state.giftWhole) return { headline: 'The whole save came over before the link dropped.', hint: 'Download the .sav file below. The Switch shows a communication error, and its save is as it was.', tone: 'good' };
+            if (result.event?.kind === 'backup') return { headline: 'The link to the Switch dropped before the backup was done.', hint: 'Choose MYSTERY GIFT, WONDER CARDS, FRIEND, GBLINK again: the backup goes on from where it stopped, as long as this page stays open.', tone: 'warn' };
+            return { headline: 'The link to the Switch dropped before the card was delivered.', hint: '', tone: 'warn' };
+        case 'error': return { headline: result.message ?? 'The Mystery Gift exchange failed.', hint: result.event?.kind === 'restore' ? 'The Switch keeps the save it had.' : '', tone: 'warn' };
         default: return null;
     }
+}
+
+// The .sav a backup came to: game, player and day.
+function saveFileName(result) {
+    const game = gift.describeGameCode(result.game.gameCode).replace(/ \(.*\)$/, '');
+    const player = (result.player?.name || 'save').replace(/[^\p{L}\p{N}_-]+/gu, '');
+    return `${game}-${player}-${new Date().toISOString().slice(0, 10)}.sav`;
+}
+
+// The whole save arrives before the exchange ends, and the end may still mark it whole or
+// not, so one link keeps one entry.
+function keepGiftBackup(bytes, name, whole) {
+    const entry = state.giftLinkBackup;
+    if (entry) Object.assign(entry, { bytes, name, whole: whole ?? entry.whole });
+    else state.giftBackups.unshift(state.giftLinkBackup = { bytes, name, whole, time: new Date() });
+    renderGiftBackups();
+}
+
+function renderGiftBackups() {
+    $('gift-backups').hidden = !state.giftBackups.length;
+    $('gift-backups-list').replaceChildren(...state.giftBackups.map((backup) => {
+        const item = document.createElement('li');
+        const copy = document.createElement('div');
+        copy.className = 'backup-copy';
+        const name = document.createElement('p');
+        name.className = 'backup-name';
+        name.textContent = backup.name;
+        const meta = document.createElement('p');
+        meta.className = 'backup-meta';
+        const time = backup.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        meta.textContent = backup.whole === false ? `${time} · neither copy is whole` : time;
+        copy.append(name, meta);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Download';
+        button.addEventListener('click', () => downloadGiftBackup(backup));
+        item.append(copy, button);
+        return item;
+    }));
+}
+
+function downloadGiftBackup(backup) {
+    const url = URL.createObjectURL(new Blob([backup.bytes], { type: 'application/octet-stream' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = backup.name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    log('gift', `downloaded ${backup.name}`);
 }
 
 const GIFT_WHERE = 'On the Switch: MYSTERY GIFT, WONDER CARDS, FRIEND, then choose GBLINK.';
@@ -1456,6 +1555,8 @@ function giftView() {
         case 'deciding': return { headline: `Linked with ${name || 'the Switch'}.`, hint: 'Checking its Wonder Card…', tone: 'good' };
         case 'asking': return { headline: `${name || 'The Switch'} has another Wonder Card.`, hint: 'On the Switch, choose whether to throw it away for this one.', tone: 'good' };
         case 'sending': return { headline: `Sending ${status.event?.label ?? 'the card'}…`, hint: 'Keep this tab open until the Switch says the card was received.', tone: 'good' };
+        case 'restoring': return { headline: `Restoring the save: ${status.detail?.done ?? 0} of ${status.detail?.total ?? 32} sectors written`, hint: 'Keep this tab open and the Switch near the board; the Switch shows “Communicating…” until it is done, then saves.', tone: 'good' };
+        case 'backing-up': return { headline: `Backing up the save: ${status.detail?.done ?? 0} of ${status.detail?.total ?? 128} KB`, hint: 'Keep this tab open and the Switch near the board; the Switch shows “Communicating…” until it is done.', tone: 'good' };
         case 'closing': return { headline: 'Finishing the link…', hint: '', tone: 'good' };
     }
     const hosting = state.session?.state === 'host';
@@ -1465,12 +1566,50 @@ function giftView() {
     return { headline: GIFT_WHERE, hint: 'The page sends the card chosen above to the next Switch that joins.', tone: 'good' };
 }
 
+// The starter of the game being backed up or restored walks along the bar, evolving at a
+// third and two thirds: Black and White's animated sprites, from PokeAPI's sprite set.
+const PROGRESS_SPRITES = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
+const STARTERS = { BPG: [1, 2, 3], BPR: [4, 5, 6] };
+
+function giftProgress() {
+    const status = state.giftStatus;
+    if (!state.gift || state.giftClosing || (status?.stage !== 'backing-up' && status?.stage !== 'restoring')) return null;
+    const { done = 0, total = 1 } = status.detail ?? {};
+    return Math.max(0, Math.min(1, total ? done / total : 0));
+}
+
+function renderGiftProgress() {
+    const share = giftProgress();
+    $('gift-progress').hidden = share === null;
+    if (share === null) { delete $('gift-progress-mon').dataset.species; return; }
+    const percent = Math.round(share * 100);
+    $('gift-progress-fill').style.width = `${percent}%`;
+    $('gift-progress-bar').setAttribute('aria-valuenow', String(percent));
+    const mon = $('gift-progress-mon');
+    mon.style.setProperty('--at', `${percent}%`);
+    const line = STARTERS[state.giftGame?.gameCode?.slice(0, 3)] ?? STARTERS.BPR;
+    const species = line[share >= 1 ? 2 : Math.min(2, Math.floor(share * 3))];
+    if (mon.dataset.species === String(species)) return;
+    const evolving = line.indexOf(Number(mon.dataset.species)) >= 0 && Number(mon.dataset.species) < species;
+    mon.dataset.species = String(species);
+    mon.onload = () => { mon.hidden = false; };
+    mon.onerror = () => { mon.hidden = true; };
+    mon.src = `${PROGRESS_SPRITES}/${species}.gif`;
+    if (evolving) {
+        mon.classList.remove('evolving');
+        void mon.offsetWidth;
+        mon.classList.add('evolving');
+    }
+}
+
 function renderGift() {
     if (state.path === 'gift') loadGift();
     const running = Boolean(state.gift);
     const event = giftEventById(state.giftEvent);
     setLine('gift-description', event?.description ?? '', event?.emerald ? 'warn' : '');
     setLine('gift-file-note', state.giftFileNote ?? '', 'bad');
+    $('gift-sav-row').hidden = event?.kind !== 'restore';
+    setLine('gift-sav-note', event?.kind !== 'restore' ? '' : state.giftRestoreNote ?? (state.giftRestore ? `${state.giftRestore.name} is ready.` : ''), state.giftRestoreNote ? 'bad' : '');
     const blocker = giftBlocker();
     $('gift-start').hidden = running;
     $('gift-start').disabled = Boolean(blocker) || !event;
@@ -1489,6 +1628,7 @@ function renderGift() {
         tone = view.tone === 'good' ? 'good' : view.tone === 'warn' ? 'warn' : 'busy';
     }
     $('gift-dot').className = `dot ${tone}`.trim();
+    renderGiftProgress();
 }
 
 function renderGame() {
@@ -2119,6 +2259,7 @@ function wireUp() {
     $('gift-stop').addEventListener('click', () => giftStop());
     $('gift-again').addEventListener('click', () => giftDecide(true));
     $('gift-keep').addEventListener('click', () => giftDecide(false));
+    $('gift-sav').addEventListener('change', (event) => onGiftSav(event.target.files?.[0]));
     $('bridge-start').addEventListener('click', onBridgeStart);
     $('bridge-stop').addEventListener('click', () => stopBridge());
     $('wiring-check').addEventListener('click', onWiringCheck);

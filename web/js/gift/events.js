@@ -4,12 +4,15 @@
 
 import { DISTRIBUTION_EVENTS, PROJECT_WONDER_EVENTS } from './official.js';
 import { TEAM_EVENTS } from './team.js';
+import { SAVE_EVENTS } from './save-backup.js';
+import { RESTORE_EVENTS } from './save-restore.js';
 import { PAYLOAD_SCRIPT_OFFSET, WONDER_CARD_BYTES, gameOfCode, romId } from './mystery-gift.js';
 
 export const EVENT_GROUPS = [
     { label: 'Event distributions', events: DISTRIBUTION_EVENTS },
     { label: 'Project Wonder (Goppier)', events: PROJECT_WONDER_EVENTS },
     { label: 'GB-Link Team', events: TEAM_EVENTS },
+    { label: 'Your save', events: [...SAVE_EVENTS, ...RESTORE_EVENTS] },
 ];
 
 export const EVENTS = EVENT_GROUPS.flatMap((group) => group.events);

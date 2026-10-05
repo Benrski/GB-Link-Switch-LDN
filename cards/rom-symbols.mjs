@@ -37,6 +37,8 @@ const SYMBOLS = {
   ENEMY_PARTY: ['gEnemyParty'],
   PLAYER_AVATAR: ['gPlayerAvatar'],
   OBJECT_EVENTS: ['gObjectEvents'],
+  DECOMPRESSION_BUFFER: ['gDecompressionBuffer'],
+  SEND_QUEUE_COUNT: ['gRfu', 0x8d2],                 // gRfu.sendQueue.count
   SELECTED_OBJECT: ['gSelectedObjectEvent'],
   PALETTE_FADE: ['gPaletteFade'],
   TEXT_PRINTERS: ['sTextPrinters'],
@@ -180,6 +182,8 @@ const SYMBOLS = {
   BERRY_TREE_GROW: { emerald: ['BerryTreeGrow', 0, 'fn'] },
   BERRY_STAGE_DURATION: { emerald: ['GetStageDurationByBerryType', 0, 'fn'] },
   SETUP_SCRIPT: ['ScriptContext_SetupScript', 0, 'fn'],
+  WRITE_SECTOR: ['svc_WriteSector', 0, 'fn'],
+  LOAD_GAME_SAVE: ['LoadGameSave', 0, 'fn'],
   IN_UNION_ROOM: ['InUnionRoom', 0, 'fn'],
   FACING_SURFABLE_WATER: ['IsPlayerFacingSurfableFishableWater', 0, 'fn'],
   SURFING_NORTH: ['IsPlayerSurfingNorth', 0, 'fn'],

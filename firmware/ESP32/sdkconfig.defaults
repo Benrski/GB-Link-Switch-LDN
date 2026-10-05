@@ -16,6 +16,8 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 # Static data is limited to ~124 KB on this chip; the zstd context is heap-allocated at boot.
 CONFIG_PIA_STATIC_ZSTD_CONTEXT=n
+# The smallest zstd literal buffer: 7 KB more heap while hosting.
+CONFIG_PIA_ZSTD_LITERAL_BUFFER=1024
 # Bridge runs on the main task; hosting a room adds Wi-Fi AP start-up to its stack.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 # Heap for the access point when the GBA leads. Switch networks are 802.11b/g (no

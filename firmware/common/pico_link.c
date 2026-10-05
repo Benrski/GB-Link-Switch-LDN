@@ -141,11 +141,24 @@ static void send_set_mode(void)
     if (pico_link_send(PICO_LINK_CHANNEL_COMMAND, set_mode_rfu, sizeof(set_mode_rfu))) ++s_modeSent;
 }
 
+/* Frames queued each way. The original ESP32 hosts a room with little heap to spare, and
+   a Wi-Fi driver short of heap loses frames to the Switch; a few frames is all a queue
+   holds in practice. */
+#if CONFIG_IDF_TARGET_ESP32
+#define FRAME_QUEUE 32
+#else
+#define FRAME_QUEUE 48
+#endif
+
+static bool s_uart_installed;
+
 /* Installed from the link task so the ISR runs on that core, away from Wi-Fi.
    RX threshold 32 of the 128-byte FIFO: at 921600 baud a near-full threshold leaves
-   <0.1 ms, which a busy Wi-Fi core overruns. */
-static void install_driver(void)
+   <0.1 ms, which a busy Wi-Fi core overruns. While the page carries the adapter's frames
+   (the host port) the UART is idle and its driver's buffers go back to the heap. */
+static bool install_driver(void)
 {
+    if (s_uart_installed) return true;
     const uart_config_t config = {
         .baud_rate = PICO_LINK_BAUD,
         .data_bits = UART_DATA_8_BITS,
@@ -154,7 +167,8 @@ static void install_driver(void)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    ESP_ERROR_CHECK(uart_driver_install(PICO_LINK_UART, 4096, 4096, 0, NULL, 0));
+    if (uart_driver_install(PICO_LINK_UART, 4096, 4096, 0, NULL, 0) != ESP_OK) return false;
+    s_uart_installed = true;
     ESP_ERROR_CHECK(uart_param_config(PICO_LINK_UART, &config));
     ESP_ERROR_CHECK(uart_set_pin(PICO_LINK_UART,
                                  s_swapped ? PICO_LINK_PIN_RX : PICO_LINK_PIN_TX,
@@ -166,12 +180,20 @@ static void install_driver(void)
         .rx_timeout_thresh = 2,
     };
     ESP_ERROR_CHECK(uart_intr_config(PICO_LINK_UART, &interrupts));
+    return true;
+}
+
+static void remove_driver(void)
+{
+    if (!s_uart_installed) return;
+    uart_driver_delete(PICO_LINK_UART);
+    s_uart_installed = false;
 }
 
 static void link_task(void *arg)
 {
     SemaphoreHandle_t ready = arg;
-    install_driver();
+    if (s_port != PICO_PORT_HOST) ESP_ERROR_CHECK(install_driver() ? ESP_OK : ESP_ERR_NO_MEM);
     xSemaphoreGive(ready);
     uint8_t buffer[256];
     /* Delay the first SetMode. A Pico already in wireless mode sends telemetry, and
@@ -180,7 +202,13 @@ static void link_task(void *arg)
     while (s_running)
     {
         /* Host port: frames are fed by the console task. */
-        if (s_port == PICO_PORT_HOST) vTaskDelay(pdMS_TO_TICKS(2));
+        if (s_port == PICO_PORT_HOST)
+        {
+            remove_driver();
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        else if (!install_driver())
+            vTaskDelay(pdMS_TO_TICKS(100));   /* retried until the heap has room */
         else
         {
             const int read = uart_read_bytes(PICO_LINK_UART, buffer, sizeof(buffer), pdMS_TO_TICKS(2));
@@ -219,7 +247,7 @@ void pico_link_start(void)
 {
     if (s_running) return;
 
-    if (!s_inbound) s_inbound = xQueueCreate(48, sizeof(pico_frame_t));
+    if (!s_inbound) s_inbound = xQueueCreate(FRAME_QUEUE, sizeof(pico_frame_t));
     ESP_ERROR_CHECK(s_inbound ? ESP_OK : ESP_ERR_NO_MEM);
 
     s_state = RX_SYNC0;
@@ -240,7 +268,7 @@ void pico_link_stop(void)
     if (!s_running) return;
     s_running = false;
     while (s_task) vTaskDelay(pdMS_TO_TICKS(2));
-    uart_driver_delete(PICO_LINK_UART);
+    remove_driver();
 }
 
 bool pico_link_running(void) { return s_running; }
@@ -257,6 +285,7 @@ bool pico_link_write(const uint8_t *bytes, size_t length)
         memcpy(frame.bytes, bytes, length);
         return xQueueSend(s_host_out, &frame, 0) == pdTRUE;
     }
+    if (!s_uart_installed) return false;
     return uart_write_bytes(PICO_LINK_UART, bytes, length) == (int)length;
 }
 
@@ -266,7 +295,7 @@ bool pico_link_set_port(pico_port_t port)
     /* Outbound queue for the host port, allocated on first use. */
     if (port == PICO_PORT_HOST && !s_host_out)
     {
-        s_host_out = xQueueCreate(48, sizeof(pico_frame_t));
+        s_host_out = xQueueCreate(FRAME_QUEUE, sizeof(pico_frame_t));
         if (!s_host_out) return false;
     }
     s_port = port;

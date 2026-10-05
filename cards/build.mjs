@@ -2010,6 +2010,39 @@ function payloadsText(card, kept, dir) {
 }
 
 
+// The save backup's buffer script and the message the game ends it with
+// (a CLI_COPY_MSG, at most 64 bytes), for web/js/gift/save-backup.js.
+const SAVE_PAYLOADS_FILE = join(HERE, '../web/js/gift/save-payloads.js');
+const SAVE_MESSAGES = {
+  BACKED_UP: 'Your save was copied to the\nGB-Link page.',
+  RESTORED: 'The save from the GB-Link page\nis in. Saving it now.',
+  NOT_RESTORED: 'The save could not be written.\nNothing was saved.',
+};
+
+function writeSavePayloads(dir) {
+  const messages = Object.entries(SAVE_MESSAGES).map(([name, text]) => {
+    const encoded = encodeText(text);
+    if (encoded.length > 64) throw new Error(`${name}: ${encoded.length} bytes, over 64`);
+    return `export const ${name} = ${decodeText(Uint8Array.from(encoded))};\n`;
+  });
+  const roms = Object.entries(ROMS).map(([romId, rom]) => {
+    const { DECOMPRESSION_BUFFER, SEND_QUEUE_COUNT, WRITE_SECTOR, LOAD_GAME_SAVE } = rom.symbols;
+    const backup = assemble('savebackup.s', { DECOMPRESSION_BUFFER, SEND_QUEUE_COUNT }, dir);
+    const restore = assemble('saverestore.s', { DECOMPRESSION_BUFFER, WRITE_SECTOR, LOAD_GAME_SAVE }, dir);
+    for (const [name, built] of [['backup', backup], ['restore', restore]]) {
+      if (built.bytes.length > 0x400) throw new Error(`save ${name} ${romId}: ${built.bytes.length} bytes, over 1 KB`);
+    }
+    console.log(`save backup and restore ${romId}: scripts ${backup.bytes.length} and ${restore.bytes.length} bytes`);
+    return `    '${romId}': {\n        buffer: 0x${DECOMPRESSION_BUFFER.toString(16)},\n        entry: 0x${(DECOMPRESSION_BUFFER + 0x400 + restore.labels.entry).toString(16)},\n`
+      + `        backup: ${decodeText(Uint8Array.from(backup.bytes), '        ')},\n        restore: ${decodeText(Uint8Array.from(restore.bytes), '        ')},\n    },\n`;
+  });
+  writeFileSync(SAVE_PAYLOADS_FILE, '// Written by cards/build.mjs from cards/savebackup.s and cards/saverestore.s.\n\n'
+    + "import { decodeBase64 } from './payloads.js';\n\n"
+    + '// By ROM: gDecompressionBuffer, where the restore\'s entry lands once installed past its\n'
+    + '// first 1 KB, and the two buffer scripts.\n'
+    + `export const SAVE_SCRIPTS = {\n${roms.join('')}};\n` + messages.join(''));
+}
+
 let source = readFileSync(EVENTS_FILE, 'utf8');
 const dir = mkdtempSync(join(tmpdir(), 'native-cards-'));
 try {
@@ -2021,6 +2054,7 @@ try {
     source = source.replace(entry, (all, head, old, tail) => head + text + tail);
   }
   writeFileSync(EVENTS_FILE, source);
+  writeSavePayloads(dir);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

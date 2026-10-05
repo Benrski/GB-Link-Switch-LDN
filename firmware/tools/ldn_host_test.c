@@ -224,7 +224,7 @@ static void test_authentication(const ldn_network_t *net)
 
     ldn_host_request_t req;
     CHECK(ldn_host_parse_request(net, auth.request, (size_t)auth.request_len, &req, g_work));
-    CHECK(strcmp(req.name, "EMU") == 0);
+    CHECK(strcmp(req.name, "GBLINK") == 0);
     CHECK(req.app_version == net->app_version);
     CHECK(memcmp(req.joiner_random, auth.random, 16) == 0);
     CHECK(memcmp(req.nonce, auth.nonce, 8) == 0);

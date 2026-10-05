@@ -7,6 +7,8 @@
 
 import { leaderBeacon } from '../cable/leader.js';
 import { MG_LINK, MysteryGiftError, WonderCardServer } from './mystery-gift.js';
+import { SaveBackupServer } from './save-backup.js';
+import { SaveRestoreServer } from './save-restore.js';
 import { eventPayload } from './events.js';
 
 const ACTIVITY_WONDER_CARD = 21;
@@ -37,6 +39,10 @@ const CLIENT_READY_FRAMES = 20;
 // A block that arrives before the Switch has taken the previous one is dropped unseen.
 const BLOCK_GAP_FRAMES = 36;
 const BLOCK_REPEAT = 2;
+// The Switch queues each fragment it resends on top of what it sends every frame, and its
+// queue (40) drains only while it has nothing to send: a block waits for it to go quiet, up
+// to this many frames, so a lossy link cannot overflow it over a long exchange.
+const QUIET_WAIT_FRAMES = 120;
 // Nothing tells which fragment of the RAM script went missing, so it goes three times.
 const RAM_SCRIPT_REPEAT = 3;
 const CLOSE_RETRY_FRAMES = 60;
@@ -111,6 +117,7 @@ export class GiftSession {
         this.blocks = [];             // { data, repeat, sent } waiting to go out
         this.inFlight = null;         // the block whose frames are queued in the leader
         this.gap = 0;
+        this.quietWait = 0;
         this.decision = null;
         this.onStatus = null;         // ({ stage, event, player, detail })
         this.onDecision = null;       // ({ reasons, game, event }), or null when withdrawn
@@ -153,6 +160,7 @@ export class GiftSession {
         this.blocks = [];
         this.inFlight = null;
         this.gap = 0;
+        this.quietWait = 0;
         this.announced = false;
         this.leader.open(giftBeacon());
         this.status('open');
@@ -301,6 +309,8 @@ export class GiftSession {
         }
         if (this.gap > 0) { this.gap--; return; }
         if (!this.blocks.length || leader.queued) return;
+        if (!leader.childQuiet && this.quietWait++ < QUIET_WAIT_FRAMES) return;
+        this.quietWait = 0;
         this.inFlight = this.blocks.shift();
         leader.sendBlock(this.inFlight.data, this.inFlight.repeat);
     }
@@ -312,10 +322,12 @@ export class GiftSession {
     startServer() {
         const link = this.link;
         link.stage = 'gift';
-        const server = link.server = new WonderCardServer({
+        const Server = { backup: SaveBackupServer, restore: SaveRestoreServer }[link.event?.kind] ?? WonderCardServer;
+        const server = link.server = new Server({
+            save: link.event?.save,
             link: {
-                sendBlock: (data, ident) => {
-                    if (this.link === link) this.queueBlock(data, ident === MG_LINK.RAM_SCRIPT ? RAM_SCRIPT_REPEAT : BLOCK_REPEAT);
+                sendBlock: (data, ident, sent = null) => {
+                    if (this.link === link) this.queueBlock(data, ident === MG_LINK.RAM_SCRIPT ? RAM_SCRIPT_REPEAT : BLOCK_REPEAT, sent);
                 },
             },
             payload: (game) => eventPayload(link.event, game),
@@ -353,6 +365,7 @@ export class GiftSession {
         link.closeAt = this.leader.ticks;
         const count = link.standby === null ? 0 : (link.standby + 1) & 0xffff;
         for (let i = 0; i < ANSWER_FRAMES; i++) this.leader.closeLink(count);
+        this.leader.echoCloseLink(count);
     }
 
     ask(reasons, game) {

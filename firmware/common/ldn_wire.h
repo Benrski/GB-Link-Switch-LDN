@@ -7,6 +7,8 @@ void ldn_wire_enable(void);
 bool ldn_wire_active(void);
 void ldn_wire_session(uint32_t session);
 void ldn_wire_feed(uint8_t byte, void (*dispatch)(const char *));
+/* Frames from the host that arrived damaged and were dropped. */
+uint32_t ldn_wire_bad_frames(void);
 
 /* Binary RFU1 adapter frames, framed like UDP datagrams (kinds 4/5).
    Kind 6 to the host, kind 7 from it. */

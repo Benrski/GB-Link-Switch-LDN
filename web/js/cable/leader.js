@@ -8,8 +8,13 @@
 //
 // Link layer: parent frames are a 3-byte header (size 0-6, phase 9-10, n 11-12, ack 13,
 // state 14-17, slot bitmap 18-21) and, once linked, five 14-byte slots: slot 0 the leader's
-// own command, slot 1 the child's last command echoed back (sequence bits cleared). Child
+// own command, slot 1 a command of the child's echoed back (sequence bits cleared). Child
 // frames are a 2-byte header (size 0-4, phase 5-6, n 7-8, ack 9, state 10-13) and one slot.
+//
+// The child takes its own commands back from slot 1: a block it sends completes only once
+// every fragment came back, and when its last fragment comes back with others missing, it
+// sends those again. A board packet can carry several of the child's frames, so each
+// distinct command is queued for echoing; a repeat still waiting is not queued twice.
 
 const RFU1 = { BROADCAST: 0, CONNECT_REQ: 1, CONNECT_ACK: 2, CONNECT_NACK: 3, DISCONNECT: 4, HOST_SEND: 5, CLIENT_SEND: 6, CLIENT_ACK: 7 };
 const STATE = { NULL: 0, NI_START: 1, NI: 2, NI_END: 3, UNI: 4 };
@@ -17,6 +22,8 @@ const CHILD_SLOT_BIT = 1 << 18;
 const SLOT_BYTES = 14;
 const UNI_PAYLOAD = 70;
 const BEACON_TICKS = 30;
+const ECHO_RETRY = 16;            // ticks before a child's INIT or whole block's last fragment goes back again
+const ECHO_RETRY_MISSING = 48;    // the same for the last fragment with fragments missing
 export const FRAG_BYTES = 12;
 
 const put16 = (b, at, v) => { b[at] = v & 0xff; b[at + 1] = (v >> 8) & 0xff; };
@@ -86,9 +93,11 @@ export class RfuLeader {
         this.joinStep = 0;
         this.idleNull = 0;
         this.own = [];                // the leader's own commands, one per frame
-        this.echo = null;             // the child's command to echo next frame
+        this.echoes = [];             // the child's commands to echo, one a frame
         this.childSeq = 0xff;
         this.recv = null;             // the child's block being received: { count, flags, data }
+        this.childQuietAt = 0;        // ticks of the child's last empty frame
+        this.childBusyAt = -1;        // and of its last command
         this.keyCount = 0;
         this.keySource = null;        // () => key code for this frame, or null for none
         this.onCommand = null;        // (words) each command of the Switch, blocks excepted
@@ -104,6 +113,9 @@ export class RfuLeader {
     request(type) { this.command([0xa100, type, 0, 0, 0, 0, 0]); }
     standby(count) { const words = [0x6600, count, 0, 0, 0, 0, 0]; this.command(words); this.command(words.slice()); }
     closeLink(count) { this.command([0x5f00, count, 0, 0, 0, 0, 0]); }
+    // The child closes once its own READY_CLOSE_LINK comes back, which it sends only once:
+    // echoed for it, a lost one cannot leave it waiting.
+    echoCloseLink(count) { this.echoes.push([0x5f00, count, 0, 0, 0, 0, 0]); }
 
     // The leader's block: its INIT on four frames, then each fragment on `repeat` frames in
     // a row, never resent.
@@ -144,6 +156,8 @@ export class RfuLeader {
     }
 
     get linked() { return this.state === 'linked'; }
+    // The child's send queue is empty: its last frame carried no command.
+    get childQuiet() { return this.childQuietAt > this.childBusyAt; }
     get joined() { return this.state === 'naming' || this.state === 'answering' || this.state === 'linked'; }
 
     // Opens (or updates) the group the Switch sees.
@@ -187,7 +201,9 @@ export class RfuLeader {
             this.childSeq = 0xff;
             this.recv = null;
             this.own = [];
-            this.echo = null;
+            this.echoes = [];
+            this.childQuietAt = 0;
+            this.childBusyAt = -1;
             this.send(rfu1(RFU1.CONNECT_ACK, this.childDevid));
             this.log('the Switch joined the group: name exchange');
             this.broadcast();
@@ -274,7 +290,8 @@ export class RfuLeader {
             this.log('linked with the Switch');
             this.onJoined?.(this.childGameData());
         }
-        if (slot.length < SLOT_BYTES || slot[1] === 0) return;
+        if (slot.length < SLOT_BYTES || slot[1] === 0) { this.childQuietAt = this.ticks; return; }
+        this.childBusyAt = this.ticks;
         const seq = slot[0] >> 5;
         const words = Array.from({ length: 7 }, (_, i) => le16(slot, i * 2));
         // The child resends block fragments untagged; they sit outside the sequence.
@@ -286,10 +303,35 @@ export class RfuLeader {
             this.childSeq = seq;
         }
         words[0] &= 0xff1f;
-        this.echo = words;
         const op = words[0] & 0xff00;
         if (op === 0x8800 || op === 0x8900) this.childBlock(words);
-        else this.onCommand?.(words);
+        if (this.echoWanted(words)) {
+            const waiting = this.echoes.at(-1);
+            if (!waiting || waiting.some((word, i) => word !== words[i])) this.echoes.push(words);
+        }
+        if (op !== 0x8800 && op !== 0x8900) this.onCommand?.(words);
+    }
+
+    // Each echo of a block's last fragment makes the child resend every fragment still
+    // missing, so echoing every repeat overflows its 40-command send queue. The last fragment
+    // goes back when it first arrives and when the block is whole, then only after a pause.
+    // INIT goes back once, then only after a pause: a one-fragment block's last fragment
+    // shares INIT's index 0.
+    echoWanted(words) {
+        const r = this.recv;
+        const op = words[0] & 0xff00;
+        if (!r || (op === 0x8800 && words[1] !== r.count)) return true;
+        if (op === 0x8800) {
+            if (r.initEcho !== undefined && this.ticks - r.initEcho < ECHO_RETRY) return false;
+            r.initEcho = this.ticks;
+            return true;
+        }
+        if (op !== 0x8900 || (words[0] & 0x1f) !== r.count - 1) return true;
+        const wait = r.done ? (r.wholeEchoed ? ECHO_RETRY : 0) : ECHO_RETRY_MISSING;
+        if (r.lastEcho !== undefined && this.ticks - r.lastEcho < wait) return false;
+        r.lastEcho = this.ticks;
+        if (r.done) r.wholeEchoed = true;
+        return true;
     }
 
     nextFrame() {
@@ -312,10 +354,14 @@ export class RfuLeader {
         return words;
     }
 
+    // An empty slot 1 reads as index 0, the echo a child waiting on a one-fragment block
+    // resends on: it holds a word with no command or index until the block is through.
     takeEcho() {
-        const echo = this.echo;
-        this.echo = null;
-        return echo;
+        const echo = this.echoes.shift();
+        if (echo) return echo;
+        const r = this.recv;
+        if (r?.count === 1 && !(r.wholeEchoed && this.ticks - r.lastEcho >= ECHO_RETRY)) return [0x00ff, 0, 0, 0, 0, 0, 0];
+        return null;
     }
 }
 

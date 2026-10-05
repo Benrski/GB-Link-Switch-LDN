@@ -240,8 +240,10 @@ export class WonderCardServer {
         this.onStage = null;
     }
 
-    send(ident, data) {
-        for (const block of messageBlocks(ident, data)) this.link.sendBlock(block, ident);
+    // sent(): once the message's last block went out, if given.
+    send(ident, data, sent = null) {
+        const blocks = messageBlocks(ident, data);
+        blocks.forEach((block, i) => this.link.sendBlock(block, ident, i === blocks.length - 1 ? sent : null));
     }
 
     receive(ident) {

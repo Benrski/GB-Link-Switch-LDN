@@ -29,6 +29,11 @@ const PACKET_MS = 26;
 const BATCH = 4;
 const AHEAD = 4;               // slots produced ahead of the estimate
 const REOPEN_MS = 400;         // the adapter's pause before a new section
+// As the slave, a section's commands wait for the master's adapter to have linked with its
+// GBA (the server's ConnectLink, sent when the master reports LinkConnected): a command that
+// reaches it while it is still linking stops the link coming up, and its GBA errors. Without
+// that word after this long, they go anyway.
+const PEER_WAIT_MS = 4000;
 const FRAME_MS = 1000 / 59.7275;
 
 const uuid = () => crypto.randomUUID();
@@ -45,6 +50,7 @@ export class CelioLink {
         this.master = null;           // null until the server has chosen
         this.partner = false;
         this.connected = false;       // a section is up
+        this.peerUp = false;          // the other adapter has linked with its GBA: commands go out
         this.waiting = false;         // told the server our GBA is ready, awaiting the other
         this.handshake = false;       // master: the handshake started, awaiting the slave
         this.closed = false;          // the link ended for good (EXIT_ROOM)
@@ -126,6 +132,10 @@ export class CelioLink {
                 else this.up();
                 break;
             case COMMAND.CONNECT_LINK:
+                if (!this.master) {
+                    if (this.connected && !this.peerUp) this.startSending('the other Game Boy Advance is linked');
+                    break;
+                }
                 if (!this.handshake) break;
                 this.handshake = false;
                 this.up();
@@ -136,9 +146,18 @@ export class CelioLink {
     up() {
         this.since = performance.now();
         this.slots = 0;
+        // The master's ConnectLink came after its partner (the slave) linked: it sends at once.
+        this.peerUp = this.master;
         this.setConnected(true);
         this.status(STATUS.LINK_CONNECTED);
         this.log('the other Game Boy Advance\'s link is open');
+    }
+
+    startSending(why) {
+        this.peerUp = true;
+        this.since = performance.now();
+        this.slots = 0;
+        this.log(why);
     }
 
     // Packets arrive in order but may repeat or run ahead after a retry.
@@ -168,6 +187,10 @@ export class CelioLink {
 
     pump() {
         if (!this.connected) { this.maybeReady(); return; }
+        if (!this.peerUp) {
+            if (performance.now() - this.since < PEER_WAIT_MS) return;
+            this.startSending('the other Game Boy Advance did not report its link: sending anyway');
+        }
         const played = Math.floor((performance.now() - this.since) / PACKET_MS);
         while (this.slots < played + AHEAD) {
             let words = this.game.nextCommand() ?? new Array(CMD_WORDS).fill(0);
